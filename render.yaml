@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: confidence-arise-growth
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: SITE_URL
+        value: https://confidencearise.com
+      - key: FROM_NAME
+        value: Confidence Arise
+      - key: FROM_EMAIL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: WHATSAPP_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: OUTREACH_API_KEY
+        sync: false
