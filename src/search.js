@@ -7,10 +7,9 @@ const OVERPASS_ENDPOINTS = [
 ]
 
 const UA =
-  'ConfidenceAriseGrowth/2.0 (https://confidencearise.com; USA outreach leads)'
+  'ConfidenceAriseGrowth/2.1 (https://confidencearise.com; USA outreach leads)'
 const MAX_RESULTS = 1000
 
-/** Amenities that are not useful outreach targets for a web agency */
 const SKIP_AMENITY = new Set([
   'parking',
   'parking_space',
@@ -32,7 +31,6 @@ const SKIP_AMENITY = new Set([
   'bus_station',
   'ferry_terminal',
   'fuel',
-  'charging_station',
   'police',
   'fire_station',
   'townhall',
@@ -69,7 +67,6 @@ const SKIP_TOURISM = new Set([
 ])
 
 const SKIP_OFFICE = new Set(['diplomatic', 'government', 'ngo', 'political_party', 'religion'])
-
 const SKIP_SHOP = new Set(['vacant', 'lottery', 'tobacco', 'weapons'])
 
 function normalizeWebsite(raw) {
@@ -90,7 +87,6 @@ function normalizeEmail(raw) {
   if (!raw) return null
   const value = String(raw).split(';')[0].trim().toLowerCase()
   if (!value.includes('@') || value.includes('example.com')) return null
-  // Filter obvious non-outreach / placeholder mails
   if (/^(noreply|no-reply|donotreply)@/i.test(value)) return null
   return value
 }
@@ -144,11 +140,9 @@ function isOutreachBusiness(tags = {}) {
       tags.office ||
       tags.craft ||
       tags.healthcare ||
-      (tags.tourism &&
-        /hotel|guest_house|hostel|motel/.test(tags.tourism)) ||
-      (tags.leisure && tags.leisure === 'fitness_centre') ||
+      (tags.tourism && /hotel|guest_house|hostel|motel/.test(tags.tourism)) ||
       (tags.amenity &&
-        /restaurant|cafe|bar|fast_food|pub|biergarten|ice_cream|food_court|pharmacy|clinic|dentists|doctors|veterinary|car_rental|car_wash|marketplace|post_office|bank|beauty_salon/.test(
+        /restaurant|cafe|bar|fast_food|pub|biergarten|ice_cream|food_court|pharmacy|clinic|dentists|doctors|veterinary|car_rental|car_wash|marketplace|post_office|bank/.test(
           tags.amenity,
         )),
   )
@@ -158,7 +152,7 @@ function leadScore(b) {
   let s = 0
   if (b.hasEmail) s += 5
   if (b.hasPhone) s += 4
-  if (!b.hasWebsite) s += 6 // best targets for web agency
+  if (!b.hasWebsite) s += 6
   if (b.hasWebsite) s += 1
   if (b.address && b.address !== 'Address not listed') s += 2
   if (b.bucket === 'shop' || b.bucket === 'office' || b.bucket === 'healthcare') s += 2
@@ -179,7 +173,6 @@ function elementToBusiness(el) {
     tags.website || tags['contact:website'] || tags.url || tags['contact:facebook'],
   )
 
-  // Growth Agent rule: must be reachable
   if (!phone && !email) return null
 
   const business = {
@@ -272,7 +265,7 @@ async function geocodeUsa({ state, city, postalCode }) {
   if (zip) {
     const om = await geocodeOpenMeteo(zip, stateCode)
     if (om) {
-      om.radius = 2800
+      om.radius = 3000
       om.state = stateCode
       return om
     }
@@ -281,43 +274,39 @@ async function geocodeUsa({ state, city, postalCode }) {
   throw new Error('Could not look up that place. Pick state + city again.')
 }
 
-/**
- * Compact contact queries — regex on contact keys (faster than many unions).
- */
+/** Proven-stable node query (volume + contact). */
 function buildNodeLeadQuery(place) {
   const { lat, lon, radius: r } = place
   const amenity =
     'restaurant|cafe|bar|fast_food|pub|biergarten|ice_cream|food_court|pharmacy|clinic|dentists|doctors|veterinary|car_rental|car_wash|marketplace|post_office|bank'
   return `
-[out:json][timeout:18];
+[out:json][timeout:20];
 (
-  node(around:${r},${lat},${lon})[name][shop][~"^(phone|contact:phone|email|contact:email)$"~"."];
-  node(around:${r},${lat},${lon})[name][office][~"^(phone|contact:phone|email|contact:email)$"~"."];
-  node(around:${r},${lat},${lon})[name][craft][~"^(phone|contact:phone|email|contact:email)$"~"."];
-  node(around:${r},${lat},${lon})[name][healthcare][~"^(phone|contact:phone|email|contact:email)$"~"."];
-  node(around:${r},${lat},${lon})[name][amenity~"${amenity}"][~"^(phone|contact:phone|email|contact:email)$"~"."];
-  node(around:${r},${lat},${lon})[name][tourism~"hotel|guest_house|hostel|motel"][~"^(phone|contact:phone|email|contact:email)$"~"."];
+  node(around:${r},${lat},${lon})[name][shop][phone];
+  node(around:${r},${lat},${lon})[name][shop]["contact:phone"];
+  node(around:${r},${lat},${lon})[name][shop][email];
+  node(around:${r},${lat},${lon})[name][shop]["contact:email"];
+  node(around:${r},${lat},${lon})[name][office][phone];
+  node(around:${r},${lat},${lon})[name][office]["contact:phone"];
+  node(around:${r},${lat},${lon})[name][office][email];
+  node(around:${r},${lat},${lon})[name][office]["contact:email"];
+  node(around:${r},${lat},${lon})[name][craft][phone];
+  node(around:${r},${lat},${lon})[name][craft]["contact:phone"];
+  node(around:${r},${lat},${lon})[name][craft][email];
+  node(around:${r},${lat},${lon})[name][healthcare][phone];
+  node(around:${r},${lat},${lon})[name][healthcare][email];
+  node(around:${r},${lat},${lon})[name][amenity~"${amenity}"][phone];
+  node(around:${r},${lat},${lon})[name][amenity~"${amenity}"]["contact:phone"];
+  node(around:${r},${lat},${lon})[name][amenity~"${amenity}"][email];
+  node(around:${r},${lat},${lon})[name][amenity~"${amenity}"]["contact:email"];
+  node(around:${r},${lat},${lon})[name][tourism~"hotel|guest_house|hostel|motel"][phone];
+  node(around:${r},${lat},${lon})[name][tourism~"hotel|guest_house|hostel|motel"][email];
 );
 out body ${MAX_RESULTS};
 `.trim()
 }
 
-function buildWayLeadQuery(place) {
-  const { lat, lon } = place
-  const r = Math.min(place.radius || 6500, 4500)
-  const amenity = 'restaurant|cafe|bar|fast_food|pub|pharmacy|clinic|dentists|doctors|bank'
-  return `
-[out:json][timeout:12];
-(
-  way(around:${r},${lat},${lon})[name][shop][~"^(phone|contact:phone|email|contact:email)$"~"."];
-  way(around:${r},${lat},${lon})[name][office][~"^(phone|contact:phone|email|contact:email)$"~"."];
-  way(around:${r},${lat},${lon})[name][amenity~"${amenity}"][~"^(phone|contact:phone|email|contact:email)$"~"."];
-);
-out center tags 350;
-`.trim()
-}
-
-async function fetchOverpass(query, timeoutMs = 18000) {
+async function fetchOverpass(query, timeoutMs = 20000) {
   let lastError = null
   for (const endpoint of OVERPASS_ENDPOINTS) {
     const controller = new AbortController()
@@ -387,24 +376,12 @@ export async function searchBusinesses({ state, city, postalCode }) {
 
   let elements = []
   try {
-    const data = await fetchOverpass(buildNodeLeadQuery(place), 18000)
+    const data = await fetchOverpass(buildNodeLeadQuery(place), 22000)
     elements = data.elements || []
   } catch {
-    const lighter = {
-      ...place,
-      radius: Math.max(Math.floor(place.radius * 0.6), 4000),
-    }
-    const data = await fetchOverpass(buildNodeLeadQuery(lighter), 18000)
+    const lighter = { ...place, radius: Math.max(Math.floor(place.radius * 0.7), 4000) }
+    const data = await fetchOverpass(buildNodeLeadQuery(lighter), 22000)
     elements = data.elements || []
-  }
-
-  if (elements.length < 350) {
-    try {
-      const ways = await fetchOverpass(buildWayLeadQuery(place), 14000)
-      elements.push(...(ways.elements || []))
-    } catch {
-      /* nodes alone */
-    }
   }
 
   const businesses = dedupe(elements.map(elementToBusiness)).sort((a, b) => {
