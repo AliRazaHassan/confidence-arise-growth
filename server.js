@@ -11,6 +11,15 @@ import {
 } from './src/templates.js'
 import { COUNTRY, US_STATES, citiesForState } from './src/usa.js'
 import { attachAuthRoutes, requireAuth } from './src/auth.js'
+import {
+  historySummary,
+  listLeads,
+  listSearches,
+  listSubmissions,
+  recordBatchSubmissions,
+  recordSearch,
+  recordSubmission,
+} from './src/store.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
@@ -20,21 +29,31 @@ app.use(express.json({ limit: '1mb' }))
 
 const recent = new Map()
 const CACHE_MS = 25 * 60 * 1000
-const CACHE_VERSION = 'usa-v2-state'
-
-const outreachLog = []
+const CACHE_VERSION = 'usa-v3'
 
 function siteConfig() {
   return {
     siteUrl: process.env.SITE_URL || 'https://confidencearise.com',
     fromName: process.env.FROM_NAME || 'Confidence Arise',
     fromEmail: process.env.FROM_EMAIL || 'hello@confidencearise.com',
-    emailReady: Boolean(process.env.RESEND_API_KEY),
+    emailReady: Boolean(process.env.RESEND_API_KEY && process.env.RESEND_API_KEY !== 'pending'),
     whatsappReady: Boolean(
-      process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID,
+      process.env.WHATSAPP_TOKEN &&
+        process.env.WHATSAPP_TOKEN !== 'pending' &&
+        process.env.WHATSAPP_PHONE_NUMBER_ID &&
+        process.env.WHATSAPP_PHONE_NUMBER_ID !== 'pending',
     ),
     authConfigured: Boolean(process.env.AUTH_PASSWORD),
   }
+}
+
+function submissionStatus(results) {
+  const parts = []
+  if (results.email?.ok) parts.push('email')
+  if (results.whatsapp?.ok) parts.push('whatsapp')
+  if (!parts.length) return 'failed'
+  if (results.email?.dryRun || results.whatsapp?.dryRun) return 'dry_run'
+  return 'sent'
 }
 
 attachAuthRoutes(app)
@@ -44,7 +63,7 @@ app.get('/api/health', (_req, res) => {
 })
 
 app.get('/api/config', requireAuth, (_req, res) => {
-  res.json(siteConfig())
+  res.json({ ...siteConfig(), history: historySummary() })
 })
 
 app.get('/api/states', requireAuth, (_req, res) => {
@@ -55,6 +74,25 @@ app.get('/api/cities', requireAuth, (req, res) => {
   const state = String(req.query.state || '').trim().toUpperCase()
   if (!state) return res.status(400).json({ error: 'state required' })
   res.json({ state, cities: citiesForState(state) })
+})
+
+app.get('/api/history/summary', requireAuth, (_req, res) => {
+  res.json(historySummary())
+})
+
+app.get('/api/history/searches', requireAuth, (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 50, 100)
+  res.json({ items: listSearches(limit) })
+})
+
+app.get('/api/history/submissions', requireAuth, (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 100, 200)
+  res.json({ items: listSubmissions(limit) })
+})
+
+app.get('/api/history/leads', requireAuth, (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 200, 500)
+  res.json({ items: listLeads(limit) })
 })
 
 app.get('/api/businesses', requireAuth, async (req, res) => {
@@ -81,11 +119,20 @@ app.get('/api/businesses', requireAuth, async (req, res) => {
 
   try {
     const result = await searchBusinesses({ state, city, postalCode })
+    const searchMeta = recordSearch({
+      state,
+      city,
+      postalCode,
+      placeLabel: result.place?.label,
+      count: result.businesses.length,
+      by: req.user?.email,
+    })
     const payload = {
       place: result.place,
       businesses: result.businesses,
       count: result.businesses.length,
       totalFound: result.totalFound,
+      searchId: searchMeta.id,
     }
     recent.set(cacheKey, { at: Date.now(), payload })
     if (!res.headersSent) res.json(payload)
@@ -135,45 +182,37 @@ app.post('/api/outreach/send', requireAuth, async (req, res) => {
     const to = business.email
     const subject = emailSubject || defaultEmailSubject(business.name)
     const text = emailBody || defaultEmailBody(business, cfg)
-    if (!to) {
-      results.email = { ok: false, error: 'No email on this lead.' }
-    } else if (dryRun) {
-      results.email = { ok: true, dryRun: true, preview: { to, subject, text } }
-    } else {
-      results.email = await sendEmail({ to, subject, text })
-    }
+    if (!to) results.email = { ok: false, error: 'No email on this lead.' }
+    else if (dryRun) results.email = { ok: true, dryRun: true, preview: { to, subject, text } }
+    else results.email = await sendEmail({ to, subject, text })
   }
 
   if (channels.includes('whatsapp')) {
     const text = whatsappBody || defaultWhatsAppBody(business, cfg)
-    if (!business.phone) {
-      results.whatsapp = { ok: false, error: 'No phone on this lead.' }
-    } else if (dryRun) {
-      results.whatsapp = {
-        ok: true,
-        dryRun: true,
-        preview: { to: business.phone, text },
-      }
-    } else {
-      results.whatsapp = await sendWhatsApp({ phone: business.phone, text })
-    }
+    if (!business.phone) results.whatsapp = { ok: false, error: 'No phone on this lead.' }
+    else if (dryRun) {
+      results.whatsapp = { ok: true, dryRun: true, preview: { to: business.phone, text } }
+    } else results.whatsapp = await sendWhatsApp({ phone: business.phone, text })
   }
 
-  const entry = {
-    at: new Date().toISOString(),
-    business: business.name,
-    id: business.id,
+  const saved = recordSubmission({
+    businessId: business.id,
+    businessName: business.name,
+    email: business.email || null,
+    phone: business.phone || null,
+    address: business.address || null,
+    channels,
+    dryRun,
     by: req.user?.email,
     results,
-  }
-  outreachLog.unshift(entry)
-  if (outreachLog.length > 200) outreachLog.pop()
+    status: submissionStatus(results),
+  })
 
   const ok =
     (!channels.includes('email') || results.email?.ok) &&
     (!channels.includes('whatsapp') || results.whatsapp?.ok)
 
-  res.status(ok ? 200 : 207).json({ ok, results, config: cfg })
+  res.status(ok ? 200 : 207).json({ ok, results, submission: saved, config: cfg })
 })
 
 app.post('/api/outreach/send-batch', requireAuth, async (req, res) => {
@@ -190,6 +229,7 @@ app.post('/api/outreach/send-batch', requireAuth, async (req, res) => {
 
   const slice = businesses.slice(0, Math.min(limit, 50))
   const items = []
+  const toSave = []
 
   for (const business of slice) {
     const cfg = siteConfig()
@@ -215,22 +255,23 @@ app.post('/api/outreach/send-batch', requireAuth, async (req, res) => {
     }
 
     items.push({ business: business.name, id: business.id, results })
-    outreachLog.unshift({
-      at: new Date().toISOString(),
-      business: business.name,
-      id: business.id,
+    toSave.push({
+      businessId: business.id,
+      businessName: business.name,
+      email: business.email || null,
+      phone: business.phone || null,
+      address: business.address || null,
+      channels,
+      dryRun,
       by: req.user?.email,
       results,
+      status: submissionStatus(results),
     })
     await new Promise((r) => setTimeout(r, dryRun ? 20 : 400))
   }
 
-  while (outreachLog.length > 200) outreachLog.pop()
-  res.json({ count: items.length, items })
-})
-
-app.get('/api/outreach/log', requireAuth, (_req, res) => {
-  res.json({ count: outreachLog.length, items: outreachLog.slice(0, 50) })
+  const saved = recordBatchSubmissions(toSave)
+  res.json({ count: items.length, items, submissions: saved })
 })
 
 app.use(express.static(path.join(__dirname, 'dist')))
