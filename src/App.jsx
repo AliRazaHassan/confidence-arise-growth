@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { FEATURED_CITIES, CATEGORY_FILTERS } from './usa.js'
+import { US_STATES, citiesForState, CATEGORY_FILTERS } from './usa.js'
 import { applyLeadFilters } from './search.js'
 
 function contactLine(b) {
@@ -9,9 +9,74 @@ function contactLine(b) {
   return bits.join(' · ') || 'No contact'
 }
 
+function LoginScreen({ onLoggedIn }) {
+  const [email, setEmail] = useState('naeemah@confidencearise.org')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function onSubmit(e) {
+    e.preventDefault()
+    setBusy(true)
+    setError('')
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Login failed')
+      onLoggedIn({ email: data.email, name: data.name })
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="login-wrap">
+      <form className="login-card" onSubmit={onSubmit}>
+        <p className="eyebrow">Confidence Arise</p>
+        <h1>Growth Agent</h1>
+        <p className="lede">Private access — Naeema only.</p>
+        <label>
+          Email
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="username"
+            required
+          />
+        </label>
+        <label>
+          Password
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+            required
+          />
+        </label>
+        {error ? <p className="error">{error}</p> : null}
+        <button type="submit" disabled={busy}>
+          {busy ? 'Signing in…' : 'Sign in'}
+        </button>
+      </form>
+    </div>
+  )
+}
+
 export default function App() {
-  const [city, setCity] = useState('Austin')
-  const [cityQuery, setCityQuery] = useState('')
+  const [user, setUser] = useState(null)
+  const [authChecked, setAuthChecked] = useState(false)
+
+  const [state, setState] = useState('TX')
+  const [city, setCity] = useState('')
   const [postalCode, setPostalCode] = useState('')
   const [category, setCategory] = useState('all')
   const [contact, setContact] = useState('reachable')
@@ -28,11 +93,13 @@ export default function App() {
   const [lastSend, setLastSend] = useState(null)
   const [preview, setPreview] = useState(null)
 
-  const filteredCities = useMemo(() => {
-    const q = cityQuery.trim().toLowerCase()
-    if (!q) return FEATURED_CITIES
-    return FEATURED_CITIES.filter((c) => c.toLowerCase().includes(q))
-  }, [cityQuery])
+  const stateCities = useMemo(() => citiesForState(state), [state])
+
+  useEffect(() => {
+    if (!stateCities.includes(city)) {
+      setCity(stateCities[0] || '')
+    }
+  }, [state, stateCities, city])
 
   const leads = useMemo(
     () => applyLeadFilters(businesses, { category, contact, hasWebsite }),
@@ -40,11 +107,28 @@ export default function App() {
   )
 
   useEffect(() => {
-    fetch('/api/config')
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.authenticated) setUser({ email: data.email, name: data.name })
+      })
+      .finally(() => setAuthChecked(true))
+  }, [])
+
+  useEffect(() => {
+    if (!user) return
+    fetch('/api/config', { credentials: 'include' })
       .then((r) => r.json())
       .then(setConfig)
       .catch(() => {})
-  }, [])
+  }, [user])
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+    setUser(null)
+    setBusinesses([])
+    setConfig(null)
+  }
 
   async function onSearch(e) {
     e.preventDefault()
@@ -52,20 +136,35 @@ export default function App() {
     setSelected(new Set())
     setLastSend(null)
     setPreview(null)
+    if (!state) {
+      setError('Select a US state first.')
+      return
+    }
     if (!city && !postalCode.trim()) {
-      setError('Pick a US city or ZIP.')
+      setError('Select a city in that state (or enter a ZIP).')
       return
     }
     setLoading(true)
     try {
-      const params = new URLSearchParams({ city, postalCode: postalCode.trim() })
+      const params = new URLSearchParams({
+        state,
+        city,
+        postalCode: postalCode.trim(),
+      })
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 40000)
-      const res = await fetch(`/api/businesses?${params}`, { signal: controller.signal })
+      const res = await fetch(`/api/businesses?${params}`, {
+        signal: controller.signal,
+        credentials: 'include',
+      })
       clearTimeout(timer)
       const data = await res.json().catch(() => ({}))
+      if (res.status === 401) {
+        setUser(null)
+        throw new Error('Session expired — sign in again.')
+      }
       if (!res.ok) throw new Error(data.error || 'Search failed')
-      setPlaceLabel(data.place?.label || city)
+      setPlaceLabel(data.place?.label || `${city}, ${state}`)
       setBusinesses(data.businesses || [])
     } catch (err) {
       setBusinesses([])
@@ -102,6 +201,7 @@ export default function App() {
     const res = await fetch('/api/outreach/preview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ business }),
     })
     const data = await res.json()
@@ -132,6 +232,7 @@ export default function App() {
       const res = await fetch('/api/outreach/send-batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           businesses: selectedBusinesses,
           channels,
@@ -149,6 +250,18 @@ export default function App() {
     }
   }
 
+  if (!authChecked) {
+    return (
+      <div className="login-wrap">
+        <p className="lede">Loading…</p>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return <LoginScreen onLoggedIn={setUser} />
+  }
+
   return (
     <div className="shell">
       <header className="top">
@@ -156,42 +269,54 @@ export default function App() {
           <p className="eyebrow">Confidence Arise</p>
           <h1>Growth Agent</h1>
           <p className="lede">
-            USA leads — filter businesses, then reach out by Email API + WhatsApp API. Messages
-            include your site link.
+            USA leads — pick state, then city, filter businesses, reach out with Email + WhatsApp
+            (site link included).
           </p>
         </div>
         <div className="status">
+          <span className="pill ok">Signed in · {user.name || user.email}</span>
           <span className={config?.emailReady ? 'pill ok' : 'pill warn'}>
             Email {config?.emailReady ? 'API ready' : 'dry-run'}
           </span>
           <span className={config?.whatsappReady ? 'pill ok' : 'pill warn'}>
             WhatsApp {config?.whatsappReady ? 'API ready' : 'dry-run'}
           </span>
+          <button type="button" className="ghost small" onClick={logout}>
+            Sign out
+          </button>
         </div>
       </header>
 
       <section className="panel find">
-        <h2>1 · Find US businesses</h2>
+        <h2>1 · State → city → businesses</h2>
         <form className="finder" onSubmit={onSearch}>
           <label>
-            City
-            <input
-              list="us-cities"
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              placeholder="Austin"
-            />
-            <input
-              className="city-filter"
-              value={cityQuery}
-              onChange={(e) => setCityQuery(e.target.value)}
-              placeholder="Filter city list…"
-            />
-            <datalist id="us-cities">
-              {filteredCities.map((c) => (
-                <option key={c} value={c} />
+            State
+            <select
+              value={state}
+              onChange={(e) => {
+                setState(e.target.value)
+                setBusinesses([])
+                setPlaceLabel('')
+              }}
+              required
+            >
+              {US_STATES.map((s) => (
+                <option key={s.code} value={s.code}>
+                  {s.name} ({s.code})
+                </option>
               ))}
-            </datalist>
+            </select>
+          </label>
+          <label>
+            City
+            <select value={city} onChange={(e) => setCity(e.target.value)} required={!postalCode}>
+              {stateCities.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
           </label>
           <label>
             ZIP (optional)
@@ -202,13 +327,13 @@ export default function App() {
             />
           </label>
           <button type="submit" disabled={loading}>
-            {loading ? 'Searching…' : 'Search'}
+            {loading ? 'Searching…' : 'Find businesses'}
           </button>
         </form>
         {placeLabel ? (
           <p className="meta">
-            Showing area: <strong>{placeLabel}</strong> · {businesses.length} raw · {leads.length}{' '}
-            after filters
+            Showing: <strong>{placeLabel}</strong> · {businesses.length} raw · {leads.length} after
+            filters
           </p>
         ) : null}
         {error ? <p className="error">{error}</p> : null}
@@ -269,7 +394,7 @@ export default function App() {
           </label>
           <label className="check">
             <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
-            Dry run (preview only — no real send)
+            Dry run (preview only)
           </label>
           <div className="actions">
             <button type="button" className="ghost" onClick={selectVisible} disabled={!leads.length}>
@@ -287,25 +412,22 @@ export default function App() {
               {sending
                 ? 'Sending…'
                 : dryRun
-                  ? `Dry-run ${selected.size} leads`
-                  : `Send to ${selected.size} leads`}
+                  ? `Dry-run ${selected.size}`
+                  : `Send to ${selected.size}`}
             </button>
           </div>
         </div>
         {lastSend ? (
           <div className="send-result">
             <p>
-              Batch done: <strong>{lastSend.count}</strong> leads
-              {dryRun ? ' (dry run)' : ''}.
+              Batch: <strong>{lastSend.count}</strong>
+              {dryRun ? ' (dry run)' : ''}
             </p>
             <ul>
               {lastSend.items?.slice(0, 8).map((item) => (
                 <li key={item.id}>
                   {item.business}: email {item.results.email?.ok ? '✓' : '—'} / WhatsApp{' '}
                   {item.results.whatsapp?.ok ? '✓' : '—'}
-                  {item.results.email?.error || item.results.whatsapp?.error
-                    ? ` (${item.results.email?.error || item.results.whatsapp?.error})`
-                    : ''}
                 </li>
               ))}
             </ul>
@@ -316,7 +438,7 @@ export default function App() {
       <section className="panel list" id="listings">
         <h2>Leads</h2>
         {!leads.length ? (
-          <p className="empty">Search a city to load businesses, then filter and select.</p>
+          <p className="empty">Pick state + city, then search.</p>
         ) : (
           <ul className="leads">
             {leads.map((b) => (
@@ -364,14 +486,10 @@ export default function App() {
 
       <footer>
         <p>
-          Site link in templates:{' '}
+          Site link:{' '}
           <a href={config?.siteUrl || 'https://confidencearise.com'} target="_blank" rel="noreferrer">
             {config?.siteUrl || 'https://confidencearise.com'}
           </a>
-        </p>
-        <p className="fine">
-          Set RESEND_API_KEY + WHATSAPP_TOKEN + WHATSAPP_PHONE_NUMBER_ID in .env for live sends.
-          Uncheck Dry run only when ready. Follow CAN-SPAM / WhatsApp policies.
         </p>
       </footer>
     </div>

@@ -9,7 +9,8 @@ import {
   defaultEmailSubject,
   defaultWhatsAppBody,
 } from './src/templates.js'
-import { COUNTRY } from './src/usa.js'
+import { COUNTRY, US_STATES, citiesForState } from './src/usa.js'
+import { attachAuthRoutes, requireAuth } from './src/auth.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
@@ -19,19 +20,9 @@ app.use(express.json({ limit: '1mb' }))
 
 const recent = new Map()
 const CACHE_MS = 25 * 60 * 1000
-const CACHE_VERSION = 'usa-v1'
+const CACHE_VERSION = 'usa-v2-state'
 
 const outreachLog = []
-
-function requireOutreachKey(req, res, next) {
-  const needed = process.env.OUTREACH_API_KEY
-  if (!needed) return next()
-  const got = req.header('x-outreach-key') || req.query.key
-  if (got !== needed) {
-    return res.status(401).json({ error: 'Unauthorized — set x-outreach-key header.' })
-  }
-  next()
-}
 
 function siteConfig() {
   return {
@@ -42,26 +33,43 @@ function siteConfig() {
     whatsappReady: Boolean(
       process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID,
     ),
+    authConfigured: Boolean(process.env.AUTH_PASSWORD),
   }
 }
+
+attachAuthRoutes(app)
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, market: COUNTRY.name, product: 'Confidence Arise Growth Agent' })
 })
 
-app.get('/api/config', (_req, res) => {
+app.get('/api/config', requireAuth, (_req, res) => {
   res.json(siteConfig())
 })
 
-app.get('/api/businesses', async (req, res) => {
+app.get('/api/states', requireAuth, (_req, res) => {
+  res.json({ states: US_STATES })
+})
+
+app.get('/api/cities', requireAuth, (req, res) => {
+  const state = String(req.query.state || '').trim().toUpperCase()
+  if (!state) return res.status(400).json({ error: 'state required' })
+  res.json({ state, cities: citiesForState(state) })
+})
+
+app.get('/api/businesses', requireAuth, async (req, res) => {
+  const state = String(req.query.state || '').trim().toUpperCase()
   const city = String(req.query.city || '').trim()
   const postalCode = String(req.query.postalCode || '').trim()
 
-  if (!city && !postalCode) {
-    return res.status(400).json({ error: 'Select a US city and/or enter a ZIP.' })
+  if (!state && !postalCode) {
+    return res.status(400).json({ error: 'Select a US state and city (or ZIP).' })
+  }
+  if (state && !city && !postalCode) {
+    return res.status(400).json({ error: 'Select a city in that state (or enter a ZIP).' })
   }
 
-  const cacheKey = [CACHE_VERSION, city.toLowerCase(), postalCode].join('|')
+  const cacheKey = [CACHE_VERSION, state, city.toLowerCase(), postalCode].join('|')
   const cached = recent.get(cacheKey)
   if (cached && Date.now() - cached.at < CACHE_MS) {
     return res.json(cached.payload)
@@ -72,7 +80,7 @@ app.get('/api/businesses', async (req, res) => {
   }, 35_000)
 
   try {
-    const result = await searchBusinesses({ city, postalCode })
+    const result = await searchBusinesses({ state, city, postalCode })
     const payload = {
       place: result.place,
       businesses: result.businesses,
@@ -88,7 +96,7 @@ app.get('/api/businesses', async (req, res) => {
   }
 })
 
-app.post('/api/outreach/preview', requireOutreachKey, (req, res) => {
+app.post('/api/outreach/preview', requireAuth, (req, res) => {
   const { business } = req.body || {}
   if (!business?.name) return res.status(400).json({ error: 'business required' })
   const cfg = siteConfig()
@@ -106,7 +114,7 @@ app.post('/api/outreach/preview', requireOutreachKey, (req, res) => {
   })
 })
 
-app.post('/api/outreach/send', requireOutreachKey, async (req, res) => {
+app.post('/api/outreach/send', requireAuth, async (req, res) => {
   const {
     business,
     channels = ['email', 'whatsapp'],
@@ -155,6 +163,7 @@ app.post('/api/outreach/send', requireOutreachKey, async (req, res) => {
     at: new Date().toISOString(),
     business: business.name,
     id: business.id,
+    by: req.user?.email,
     results,
   }
   outreachLog.unshift(entry)
@@ -167,7 +176,7 @@ app.post('/api/outreach/send', requireOutreachKey, async (req, res) => {
   res.status(ok ? 200 : 207).json({ ok, results, config: cfg })
 })
 
-app.post('/api/outreach/send-batch', requireOutreachKey, async (req, res) => {
+app.post('/api/outreach/send-batch', requireAuth, async (req, res) => {
   const {
     businesses = [],
     channels = ['email', 'whatsapp'],
@@ -206,8 +215,13 @@ app.post('/api/outreach/send-batch', requireOutreachKey, async (req, res) => {
     }
 
     items.push({ business: business.name, id: business.id, results })
-    outreachLog.unshift({ at: new Date().toISOString(), business: business.name, id: business.id, results })
-    // gentle pacing for APIs
+    outreachLog.unshift({
+      at: new Date().toISOString(),
+      business: business.name,
+      id: business.id,
+      by: req.user?.email,
+      results,
+    })
     await new Promise((r) => setTimeout(r, dryRun ? 20 : 400))
   }
 
@@ -215,7 +229,7 @@ app.post('/api/outreach/send-batch', requireOutreachKey, async (req, res) => {
   res.json({ count: items.length, items })
 })
 
-app.get('/api/outreach/log', requireOutreachKey, (_req, res) => {
+app.get('/api/outreach/log', requireAuth, (_req, res) => {
   res.json({ count: outreachLog.length, items: outreachLog.slice(0, 50) })
 })
 
@@ -229,6 +243,7 @@ app.use((req, res) => {
 app.listen(PORT, () => {
   console.log(`Confidence Arise Growth Agent on http://localhost:${PORT}`)
   const cfg = siteConfig()
-  console.log(`Email API: ${cfg.emailReady ? 'ready' : 'dry-run (set RESEND_API_KEY)'}`)
-  console.log(`WhatsApp API: ${cfg.whatsappReady ? 'ready' : 'dry-run (set WHATSAPP_*)'}`)
+  console.log(`Auth: ${cfg.authConfigured ? 'password set' : 'SET AUTH_PASSWORD'}`)
+  console.log(`Email API: ${cfg.emailReady ? 'ready' : 'dry-run'}`)
+  console.log(`WhatsApp API: ${cfg.whatsappReady ? 'ready' : 'dry-run'}`)
 })

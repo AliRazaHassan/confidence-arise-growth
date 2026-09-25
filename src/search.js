@@ -1,4 +1,4 @@
-import { CITY_COORDS, COUNTRY } from './usa.js'
+import { cityCoords, stateName, COUNTRY } from './usa.js'
 
 const OVERPASS_ENDPOINTS = [
   'https://lz4.overpass-api.de/api/interpreter',
@@ -7,7 +7,7 @@ const OVERPASS_ENDPOINTS = [
 ]
 
 const UA =
-  'ConfidenceAriseGrowth/1.0 (https://confidencearise.com; USA business outreach)'
+  'ConfidenceAriseGrowth/1.1 (https://confidencearise.com; USA business outreach)'
 const MAX_RESULTS = 800
 
 const SKIP_AMENITY = new Set([
@@ -127,52 +127,83 @@ function elementToBusiness(el) {
   }
 }
 
-async function geocodeOpenMeteo(name) {
+async function geocodeOpenMeteo(city, stateCode) {
+  const query = stateCode ? `${city}, ${stateName(stateCode)}` : city
   const params = new URLSearchParams({
-    name,
+    name: query,
     countryCode: 'US',
-    count: '5',
+    count: '8',
     language: 'en',
   })
   const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?${params}`)
   if (!res.ok) return null
   const data = await res.json()
-  const rows = (data.results || []).filter((r) => (r.country_code || '').toUpperCase() === 'US')
+  let rows = (data.results || []).filter((r) => (r.country_code || '').toUpperCase() === 'US')
+  if (stateCode) {
+    const st = stateName(stateCode).toLowerCase()
+    const narrowed = rows.filter(
+      (r) =>
+        String(r.admin1 || '').toLowerCase() === st ||
+        String(r.admin1 || '').toLowerCase().includes(st.split(' ')[0]),
+    )
+    if (narrowed.length) rows = narrowed
+  }
   if (!rows.length) return null
   const best = rows[0]
   return {
     lat: best.latitude,
     lon: best.longitude,
-    label: [best.name, best.admin1, 'USA'].filter(Boolean).join(', '),
+    label: [best.name, best.admin1 || stateCode, 'USA'].filter(Boolean).join(', '),
     radius: 4000,
   }
 }
 
-async function geocodeUsa({ city, postalCode }) {
+async function geocodeUsa({ state, city, postalCode }) {
+  const stateCode = String(state || '').trim().toUpperCase()
   const cityName = (city || '').trim()
   const zip = (postalCode || '').trim()
+
+  if (!stateCode && !cityName && !zip) {
+    throw new Error('Select a US state and city, or enter a ZIP.')
+  }
+
   const radius = zip && !cityName ? 2500 : 4000
 
-  if (cityName && CITY_COORDS[cityName]) {
-    const [lat, lon] = CITY_COORDS[cityName]
-    return {
-      lat,
-      lon,
-      radius,
-      label: `${cityName}${zip ? ` ${zip}` : ''}, USA`,
+  if (stateCode && cityName) {
+    const hit = cityCoords(stateCode, cityName)
+    if (hit) {
+      const [lat, lon] = hit
+      return {
+        lat,
+        lon,
+        radius,
+        label: `${cityName}, ${stateCode}${zip ? ` ${zip}` : ''}, USA`,
+        state: stateCode,
+        city: cityName,
+      }
     }
   }
 
   if (cityName) {
-    const om = await geocodeOpenMeteo(cityName)
+    const om = await geocodeOpenMeteo(cityName, stateCode)
     if (om) {
       om.radius = radius
-      if (zip) om.label = `${om.label} ${zip}`
+      om.state = stateCode
+      om.city = cityName
       return om
     }
   }
 
-  throw new Error('Could not look up that US city. Try a major city or ZIP.')
+  if (zip) {
+    const om = await geocodeOpenMeteo(zip, stateCode)
+    if (om) {
+      om.radius = 2500
+      om.state = stateCode
+      return om
+    }
+  }
+
+  throw new Error('Could not look up that place. Pick state + city again.')
 }
 
 function buildMainQuery(place) {
@@ -255,12 +286,16 @@ function rank(b) {
   return s
 }
 
-export async function searchBusinesses({ city, postalCode }) {
-  if (!city?.trim() && !postalCode?.trim()) {
-    throw new Error('Select a US city and/or enter a ZIP.')
+export async function searchBusinesses({ state, city, postalCode }) {
+  if (!String(state || '').trim() && !String(city || '').trim() && !String(postalCode || '').trim()) {
+    throw new Error('Select a US state and city, or enter a ZIP.')
+  }
+  if (!String(state || '').trim() && !String(postalCode || '').trim()) {
+    throw new Error('Select a US state first, then a city.')
   }
 
   const place = await geocodeUsa({
+    state: state?.trim() || '',
     city: city?.trim() || '',
     postalCode: postalCode?.trim() || '',
   })

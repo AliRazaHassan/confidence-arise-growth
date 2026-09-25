@@ -1,52 +1,32 @@
 ﻿# Confidence Arise · Growth Agent (USA)
 
-Separate USA-market tool: **find businesses → filter leads → send Email + WhatsApp** with your website link in every message.
+Private tool for **Naeema** (`naeemah@confidencearise.org`): login → **State → City → businesses** → filter → Email / WhatsApp outreach with `confidencearise.com` link.
 
-## Stack
-
-- Vite + React UI
-- Express API
-- Business data: OpenStreetMap (Overpass)
-- Email: [Resend](https://resend.com) API
-- WhatsApp: [Meta Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api)
-
-## Setup
+## Run locally
 
 ```bash
-cd E:\confidence-arise-growth
 npm install
 copy .env.example .env
+# set AUTH_PASSWORD in .env
 npm run dev
 ```
 
-Open http://localhost:5174 (API on 4174).
+http://localhost:5174
 
-### `.env` keys
+## Env
 
-| Key | Purpose |
-|-----|---------|
-| `SITE_URL` | Link embedded in email/WhatsApp (default `https://confidencearise.com`) |
-| `FROM_NAME` / `FROM_EMAIL` | Sender identity |
-| `RESEND_API_KEY` | Live email sends |
-| `WHATSAPP_TOKEN` | Meta permanent / system user token |
-| `WHATSAPP_PHONE_NUMBER_ID` | WhatsApp Business phone number ID |
-| `OUTREACH_API_KEY` | Optional guard for `/api/outreach/*` |
-
-Without API keys, the UI still works in **Dry run** mode (previews only, no real send).
-
-## WhatsApp Cloud API (quick)
-
-1. Meta Developer App → add **WhatsApp** product  
-2. Copy **Phone number ID** + token into `.env`  
-3. For production, use a template message for cold outreach (24h window rules) — this MVP sends free-form `text` (best for replies / opted-in, or sandbox testing)
-
-## Flow
-
-1. Search US city / ZIP  
-2. Filter by category, email/phone, website  
-3. Select leads → Dry run or live send (Email and/or WhatsApp)  
-4. Templates include `SITE_URL`
+| Key | Required | Notes |
+|-----|----------|--------|
+| `AUTH_EMAIL` | yes | default `naeemah@confidencearise.org` |
+| `AUTH_PASSWORD` | yes | Naeema's login password |
+| `SESSION_SECRET` | yes (prod) | cookie signing |
+| `RESEND_API_KEY` | for live email | |
+| `WHATSAPP_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` | for live WA | |
 
 ## Deploy (Render)
 
-Push repo → Blueprint `render.yaml` → set secret env vars in dashboard.
+1. Push this repo to GitHub  
+2. Render → New → Blueprint → select repo (`render.yaml`)  
+3. Set `AUTH_PASSWORD` (and optional Resend / WhatsApp keys) in dashboard  
+
+Or: **New Web Service** → build `npm install && npm run build` → start `npm start`

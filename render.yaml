@@ -11,6 +11,12 @@ services:
         value: https://confidencearise.com
       - key: FROM_NAME
         value: Confidence Arise
+      - key: AUTH_EMAIL
+        value: naeemah@confidencearise.org
+      - key: AUTH_PASSWORD
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
       - key: FROM_EMAIL
         sync: false
       - key: RESEND_API_KEY
@@ -18,6 +24,4 @@ services:
       - key: WHATSAPP_TOKEN
         sync: false
       - key: WHATSAPP_PHONE_NUMBER_ID
-        sync: false
-      - key: OUTREACH_API_KEY
         sync: false
