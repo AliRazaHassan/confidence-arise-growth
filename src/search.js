@@ -229,7 +229,7 @@ async function geocodeOpenMeteo(city, stateCode) {
     lat: best.latitude,
     lon: best.longitude,
     label: [best.name, best.admin1 || stateCode, 'USA'].filter(Boolean).join(', '),
-    radius: 8000,
+    radius: 6500,
   }
 }
 
@@ -242,7 +242,7 @@ async function geocodeUsa({ state, city, postalCode }) {
     throw new Error('Select a US state and city, or enter a ZIP.')
   }
 
-  const radius = zip && !cityName ? 3200 : 8000
+  const radius = zip && !cityName ? 3000 : 6500
 
   if (stateCode && cityName) {
     const hit = cityCoords(stateCode, cityName)
@@ -282,37 +282,21 @@ async function geocodeUsa({ state, city, postalCode }) {
 }
 
 /**
- * Contact-first queries. Nodes for speed/volume; ways as optional enrich.
+ * Compact contact queries — regex on contact keys (faster than many unions).
  */
 function buildNodeLeadQuery(place) {
   const { lat, lon, radius: r } = place
   const amenity =
-    'restaurant|cafe|bar|fast_food|pub|biergarten|ice_cream|food_court|pharmacy|clinic|dentists|doctors|veterinary|car_rental|car_wash|marketplace|post_office|bank|beauty_salon'
+    'restaurant|cafe|bar|fast_food|pub|biergarten|ice_cream|food_court|pharmacy|clinic|dentists|doctors|veterinary|car_rental|car_wash|marketplace|post_office|bank'
   return `
-[out:json][timeout:20];
+[out:json][timeout:18];
 (
-  node(around:${r},${lat},${lon})[name][shop][phone];
-  node(around:${r},${lat},${lon})[name][shop]["contact:phone"];
-  node(around:${r},${lat},${lon})[name][shop][email];
-  node(around:${r},${lat},${lon})[name][shop]["contact:email"];
-  node(around:${r},${lat},${lon})[name][office][phone];
-  node(around:${r},${lat},${lon})[name][office]["contact:phone"];
-  node(around:${r},${lat},${lon})[name][office][email];
-  node(around:${r},${lat},${lon})[name][office]["contact:email"];
-  node(around:${r},${lat},${lon})[name][craft][phone];
-  node(around:${r},${lat},${lon})[name][craft]["contact:phone"];
-  node(around:${r},${lat},${lon})[name][craft][email];
-  node(around:${r},${lat},${lon})[name][healthcare][phone];
-  node(around:${r},${lat},${lon})[name][healthcare]["contact:phone"];
-  node(around:${r},${lat},${lon})[name][healthcare][email];
-  node(around:${r},${lat},${lon})[name][amenity~"${amenity}"][phone];
-  node(around:${r},${lat},${lon})[name][amenity~"${amenity}"]["contact:phone"];
-  node(around:${r},${lat},${lon})[name][amenity~"${amenity}"][email];
-  node(around:${r},${lat},${lon})[name][amenity~"${amenity}"]["contact:email"];
-  node(around:${r},${lat},${lon})[name][tourism~"hotel|guest_house|hostel|motel"][phone];
-  node(around:${r},${lat},${lon})[name][tourism~"hotel|guest_house|hostel|motel"][email];
-  node(around:${r},${lat},${lon})[name][leisure=fitness_centre][phone];
-  node(around:${r},${lat},${lon})[name][leisure=fitness_centre][email];
+  node(around:${r},${lat},${lon})[name][shop][~"^(phone|contact:phone|email|contact:email)$"~"."];
+  node(around:${r},${lat},${lon})[name][office][~"^(phone|contact:phone|email|contact:email)$"~"."];
+  node(around:${r},${lat},${lon})[name][craft][~"^(phone|contact:phone|email|contact:email)$"~"."];
+  node(around:${r},${lat},${lon})[name][healthcare][~"^(phone|contact:phone|email|contact:email)$"~"."];
+  node(around:${r},${lat},${lon})[name][amenity~"${amenity}"][~"^(phone|contact:phone|email|contact:email)$"~"."];
+  node(around:${r},${lat},${lon})[name][tourism~"hotel|guest_house|hostel|motel"][~"^(phone|contact:phone|email|contact:email)$"~"."];
 );
 out body ${MAX_RESULTS};
 `.trim()
@@ -320,21 +304,16 @@ out body ${MAX_RESULTS};
 
 function buildWayLeadQuery(place) {
   const { lat, lon } = place
-  const r = Math.min(place.radius || 8000, 5000)
-  const amenity =
-    'restaurant|cafe|bar|fast_food|pub|pharmacy|clinic|dentists|doctors|bank|marketplace'
+  const r = Math.min(place.radius || 6500, 4500)
+  const amenity = 'restaurant|cafe|bar|fast_food|pub|pharmacy|clinic|dentists|doctors|bank'
   return `
-[out:json][timeout:15];
+[out:json][timeout:12];
 (
-  way(around:${r},${lat},${lon})[name][shop][phone];
-  way(around:${r},${lat},${lon})[name][shop]["contact:phone"];
-  way(around:${r},${lat},${lon})[name][shop][email];
-  way(around:${r},${lat},${lon})[name][office][phone];
-  way(around:${r},${lat},${lon})[name][office][email];
-  way(around:${r},${lat},${lon})[name][amenity~"${amenity}"][phone];
-  way(around:${r},${lat},${lon})[name][amenity~"${amenity}"][email];
+  way(around:${r},${lat},${lon})[name][shop][~"^(phone|contact:phone|email|contact:email)$"~"."];
+  way(around:${r},${lat},${lon})[name][office][~"^(phone|contact:phone|email|contact:email)$"~"."];
+  way(around:${r},${lat},${lon})[name][amenity~"${amenity}"][~"^(phone|contact:phone|email|contact:email)$"~"."];
 );
-out center tags 400;
+out center tags 350;
 `.trim()
 }
 
