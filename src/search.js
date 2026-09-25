@@ -7,13 +7,16 @@ const OVERPASS_ENDPOINTS = [
 ]
 
 const UA =
-  'ConfidenceAriseGrowth/1.1 (https://confidencearise.com; USA business outreach)'
-const MAX_RESULTS = 800
+  'ConfidenceAriseGrowth/2.0 (https://confidencearise.com; USA outreach leads)'
+const MAX_RESULTS = 500
 
+/** Amenities that are not useful outreach targets for a web agency */
 const SKIP_AMENITY = new Set([
   'parking',
   'parking_space',
+  'parking_entrance',
   'bicycle_parking',
+  'motorcycle_parking',
   'bench',
   'waste_basket',
   'recycling',
@@ -23,7 +26,51 @@ const SKIP_AMENITY = new Set([
   'post_box',
   'vending_machine',
   'charging_station',
+  'atm',
+  'bureau_de_change',
+  'taxi',
+  'bus_station',
+  'ferry_terminal',
+  'fuel',
+  'charging_station',
+  'police',
+  'fire_station',
+  'townhall',
+  'courthouse',
+  'prison',
+  'library',
+  'college',
+  'university',
+  'school',
+  'kindergarten',
+  'place_of_worship',
+  'community_centre',
+  'social_facility',
+  'shelter',
+  'clock',
+  'theatre',
+  'cinema',
+  'arts_centre',
+  'nightclub',
 ])
+
+const SKIP_TOURISM = new Set([
+  'artwork',
+  'information',
+  'viewpoint',
+  'attraction',
+  'museum',
+  'gallery',
+  'picnic_site',
+  'camp_site',
+  'caravan_site',
+  'zoo',
+  'theme_park',
+])
+
+const SKIP_OFFICE = new Set(['diplomatic', 'government', 'ngo', 'political_party', 'religion'])
+
+const SKIP_SHOP = new Set(['vacant', 'lottery', 'tobacco', 'weapons'])
 
 function normalizeWebsite(raw) {
   if (!raw) return null
@@ -41,8 +88,10 @@ function normalizePhone(raw) {
 
 function normalizeEmail(raw) {
   if (!raw) return null
-  const value = String(raw).split(';')[0].trim()
-  if (!value.includes('@')) return null
+  const value = String(raw).split(';')[0].trim().toLowerCase()
+  if (!value.includes('@') || value.includes('example.com')) return null
+  // Filter obvious non-outreach / placeholder mails
+  if (/^(noreply|no-reply|donotreply)@/i.test(value)) return null
   return value
 }
 
@@ -77,30 +126,48 @@ function categoryBucket(tags = {}) {
     return 'restaurant'
   }
   if (tags.office) return 'office'
-  if (tags.healthcare || tags.amenity === 'pharmacy' || tags.amenity === 'clinic') {
+  if (tags.healthcare || /pharmacy|clinic|dentists|doctors/.test(tags.amenity || '')) {
     return 'healthcare'
   }
   if (tags.tourism) return 'tourism'
   return 'other'
 }
 
-function isBusinessLike(tags = {}) {
+function isOutreachBusiness(tags = {}) {
   if (tags.amenity && SKIP_AMENITY.has(tags.amenity)) return false
+  if (tags.tourism && SKIP_TOURISM.has(tags.tourism)) return false
+  if (tags.office && SKIP_OFFICE.has(tags.office)) return false
+  if (tags.shop && SKIP_SHOP.has(tags.shop)) return false
+
   return Boolean(
     tags.shop ||
-      tags.amenity ||
       tags.office ||
       tags.craft ||
-      tags.tourism ||
-      tags.healthcare,
+      tags.healthcare ||
+      (tags.tourism && (tags.tourism === 'hotel' || tags.tourism === 'guest_house' || tags.tourism === 'hostel')) ||
+      (tags.amenity &&
+        /restaurant|cafe|bar|fast_food|pub|biergarten|ice_cream|food_court|pharmacy|clinic|dentists|doctors|veterinary|car_rental|car_wash|marketplace|post_office/.test(
+          tags.amenity,
+        )),
   )
+}
+
+function leadScore(b) {
+  let s = 0
+  if (b.hasEmail) s += 5
+  if (b.hasPhone) s += 4
+  if (!b.hasWebsite) s += 6 // best targets for web agency
+  if (b.hasWebsite) s += 1
+  if (b.address && b.address !== 'Address not listed') s += 2
+  if (b.bucket === 'shop' || b.bucket === 'office' || b.bucket === 'healthcare') s += 2
+  return s
 }
 
 function elementToBusiness(el) {
   const tags = el.tags || {}
   const name = (tags.name || tags.brand || tags.operator || '').trim()
   if (!name || name.length < 2) return null
-  if (!isBusinessLike(tags)) return null
+  if (!isOutreachBusiness(tags)) return null
 
   const phone = normalizePhone(
     tags.phone || tags['contact:phone'] || tags['phone:mobile'] || tags['contact:mobile'],
@@ -110,7 +177,10 @@ function elementToBusiness(el) {
     tags.website || tags['contact:website'] || tags.url || tags['contact:facebook'],
   )
 
-  return {
+  // Growth Agent rule: must be reachable
+  if (!phone && !email) return null
+
+  const business = {
     id: `${el.type}/${el.id}`,
     name,
     category: categoryFromTags(tags),
@@ -122,9 +192,12 @@ function elementToBusiness(el) {
     hasPhone: Boolean(phone),
     hasEmail: Boolean(email),
     hasWebsite: Boolean(website),
+    outreachReady: Boolean((phone || email) && !website),
     lat: el.lat ?? el.center?.lat ?? null,
     lon: el.lon ?? el.center?.lon ?? null,
   }
+  business.score = leadScore(business)
+  return business
 }
 
 async function geocodeOpenMeteo(city, stateCode) {
@@ -154,7 +227,7 @@ async function geocodeOpenMeteo(city, stateCode) {
     lat: best.latitude,
     lon: best.longitude,
     label: [best.name, best.admin1 || stateCode, 'USA'].filter(Boolean).join(', '),
-    radius: 4000,
+    radius: 5500,
   }
 }
 
@@ -167,7 +240,7 @@ async function geocodeUsa({ state, city, postalCode }) {
     throw new Error('Select a US state and city, or enter a ZIP.')
   }
 
-  const radius = zip && !cityName ? 2500 : 4000
+  const radius = zip && !cityName ? 2800 : 5500
 
   if (stateCode && cityName) {
     const hit = cityCoords(stateCode, cityName)
@@ -197,7 +270,7 @@ async function geocodeUsa({ state, city, postalCode }) {
   if (zip) {
     const om = await geocodeOpenMeteo(zip, stateCode)
     if (om) {
-      om.radius = 2500
+      om.radius = 2800
       om.state = stateCode
       return om
     }
@@ -206,19 +279,36 @@ async function geocodeUsa({ state, city, postalCode }) {
   throw new Error('Could not look up that place. Pick state + city again.')
 }
 
-function buildMainQuery(place) {
+/**
+ * Contact-first Overpass query — only POIs that already have phone/email/website tags.
+ * Italy-style "dump every amenity" was wrong for outreach.
+ */
+function buildContactLeadQuery(place) {
   const { lat, lon, radius: r } = place
   const amenity =
-    'restaurant|cafe|bar|fast_food|pub|pharmacy|bank|clinic|dentists|doctors|hospital|cinema|theatre|marketplace|post_office|fuel'
+    'restaurant|cafe|bar|fast_food|pub|biergarten|ice_cream|pharmacy|clinic|dentists|doctors|veterinary|car_rental|car_wash|marketplace|post_office'
   return `
-[out:json][timeout:20];
+[out:json][timeout:22];
 (
-  node(around:${r},${lat},${lon})[name][shop];
-  node(around:${r},${lat},${lon})[name][office];
-  node(around:${r},${lat},${lon})[name][craft];
-  node(around:${r},${lat},${lon})[name][amenity~"${amenity}"];
-  node(around:${r},${lat},${lon})[name][tourism];
-  node(around:${r},${lat},${lon})[name][healthcare];
+  node(around:${r},${lat},${lon})[name][shop][phone];
+  node(around:${r},${lat},${lon})[name][shop]["contact:phone"];
+  node(around:${r},${lat},${lon})[name][shop][email];
+  node(around:${r},${lat},${lon})[name][shop]["contact:email"];
+  node(around:${r},${lat},${lon})[name][office][phone];
+  node(around:${r},${lat},${lon})[name][office]["contact:phone"];
+  node(around:${r},${lat},${lon})[name][office][email];
+  node(around:${r},${lat},${lon})[name][office]["contact:email"];
+  node(around:${r},${lat},${lon})[name][craft][phone];
+  node(around:${r},${lat},${lon})[name][craft]["contact:phone"];
+  node(around:${r},${lat},${lon})[name][craft][email];
+  node(around:${r},${lat},${lon})[name][healthcare][phone];
+  node(around:${r},${lat},${lon})[name][healthcare][email];
+  node(around:${r},${lat},${lon})[name][amenity~"${amenity}"][phone];
+  node(around:${r},${lat},${lon})[name][amenity~"${amenity}"]["contact:phone"];
+  node(around:${r},${lat},${lon})[name][amenity~"${amenity}"][email];
+  node(around:${r},${lat},${lon})[name][amenity~"${amenity}"]["contact:email"];
+  node(around:${r},${lat},${lon})[name][tourism~"hotel|guest_house|hostel"][phone];
+  node(around:${r},${lat},${lon})[name][tourism~"hotel|guest_house|hostel"][email];
 );
 out body ${MAX_RESULTS};
 `.trim()
@@ -262,7 +352,7 @@ async function fetchOverpass(query, timeoutMs = 18000) {
       lastError = err
     }
   }
-  throw lastError || new Error('Business lookup failed.')
+  throw lastError || new Error('Lead lookup failed.')
 }
 
 function dedupe(list) {
@@ -270,20 +360,12 @@ function dedupe(list) {
   const out = []
   for (const b of list) {
     if (!b) continue
-    const key = `${b.name.toLowerCase()}|${(b.phone || '').toLowerCase()}|${(b.address || '').toLowerCase().slice(0, 36)}`
+    const key = `${b.name.toLowerCase()}|${(b.phone || '').toLowerCase()}|${(b.email || '').toLowerCase()}`
     if (seen.has(key)) continue
     seen.add(key)
     out.push(b)
   }
   return out
-}
-
-function rank(b) {
-  let s = 0
-  if (b.hasEmail) s += 4
-  if (b.hasPhone) s += 4
-  if (b.hasWebsite) s += 2
-  return s
 }
 
 export async function searchBusinesses({ state, city, postalCode }) {
@@ -302,33 +384,43 @@ export async function searchBusinesses({ state, city, postalCode }) {
 
   let elements = []
   try {
-    const data = await fetchOverpass(buildMainQuery(place))
+    const data = await fetchOverpass(buildContactLeadQuery(place), 20000)
     elements = data.elements || []
   } catch {
-    const lighter = { ...place, radius: Math.max(Math.floor(place.radius * 0.7), 2000) }
-    const data = await fetchOverpass(buildMainQuery(lighter))
+    const lighter = { ...place, radius: Math.max(Math.floor(place.radius * 0.7), 2500) }
+    const data = await fetchOverpass(buildContactLeadQuery(lighter), 20000)
     elements = data.elements || []
   }
 
   const businesses = dedupe(elements.map(elementToBusiness)).sort((a, b) => {
-    const d = rank(b) - rank(a)
+    const d = b.score - a.score
     if (d) return d
     return a.name.localeCompare(b.name)
   })
 
   if (!businesses.length) {
-    throw new Error('No US businesses found near that place.')
+    throw new Error(
+      'No outreach-ready businesses with phone/email found here. Try another city.',
+    )
   }
+
+  const ready = businesses.filter((b) => b.outreachReady).length
 
   return {
     place: { ...place, country: COUNTRY.name },
     businesses: businesses.slice(0, MAX_RESULTS),
     totalFound: businesses.length,
+    quality: {
+      withContact: businesses.length,
+      outreachReady: ready,
+      source: 'osm-contact-tagged',
+    },
   }
 }
 
-export function applyLeadFilters(businesses, { category, contact, hasWebsite }) {
+export function applyLeadFilters(businesses, { category, contact, hasWebsite, outreachOnly }) {
   let list = businesses
+  if (outreachOnly) list = list.filter((b) => b.outreachReady)
   if (category && category !== 'all') {
     list = list.filter((b) => b.bucket === category)
   }

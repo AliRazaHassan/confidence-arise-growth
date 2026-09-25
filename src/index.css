@@ -331,6 +331,13 @@ button:disabled {
   min-width: 200px;
 }
 
+.filters-bar .filter-check {
+  min-width: auto;
+  flex-direction: row;
+  align-items: center;
+  padding-bottom: 0.35rem;
+}
+
 .outreach-bar {
   align-items: center;
 }

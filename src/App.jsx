@@ -286,12 +286,14 @@ function FindView({ config, onSent }) {
   const [postalCode, setPostalCode] = useState('')
   const [category, setCategory] = useState('all')
   const [contact, setContact] = useState('reachable')
-  const [hasWebsite, setHasWebsite] = useState('all')
+  const [hasWebsite, setHasWebsite] = useState('without')
+  const [outreachOnly, setOutreachOnly] = useState(true)
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   const [placeLabel, setPlaceLabel] = useState('')
   const [businesses, setBusinesses] = useState([])
+  const [quality, setQuality] = useState(null)
   const [selected, setSelected] = useState(() => new Set())
   const [sendChannels, setSendChannels] = useState({ email: true, whatsapp: true })
   const [dryRun, setDryRun] = useState(true)
@@ -306,7 +308,7 @@ function FindView({ config, onSent }) {
   }, [state, stateCities, city])
 
   const leads = useMemo(() => {
-    let list = applyLeadFilters(businesses, { category, contact, hasWebsite })
+    let list = applyLeadFilters(businesses, { category, contact, hasWebsite, outreachOnly })
     const needle = q.trim().toLowerCase()
     if (needle) {
       list = list.filter(
@@ -317,7 +319,7 @@ function FindView({ config, onSent }) {
       )
     }
     return list
-  }, [businesses, category, contact, hasWebsite, q])
+  }, [businesses, category, contact, hasWebsite, outreachOnly, q])
 
   const selectedBusinesses = useMemo(
     () => leads.filter((b) => selected.has(b.id)),
@@ -346,6 +348,7 @@ function FindView({ config, onSent }) {
       if (!res.ok) throw new Error(data.error || 'Search failed')
       setPlaceLabel(data.place?.label || `${city}, ${state}`)
       setBusinesses(data.businesses || [])
+      setQuality(data.quality || null)
     } catch (err) {
       setBusinesses([])
       setError(err?.name === 'AbortError' ? 'Timed out — try again.' : err.message)
@@ -413,7 +416,10 @@ function FindView({ config, onSent }) {
       <header className="view-head">
         <div>
           <h2>Find leads</h2>
-          <p>State → city → filter → outreach. Messages include your site link.</p>
+          <p>
+            Outreach-ready US businesses only (phone or email). Junk map POIs, embassies, and
+            artwork are excluded — unlike the old Italy dump.
+          </p>
         </div>
         <div className="api-pills">
           <span className={config?.emailReady ? 'pill ok' : 'pill warn'}>
@@ -490,10 +496,18 @@ function FindView({ config, onSent }) {
         <label>
           Website
           <select value={hasWebsite} onChange={(e) => setHasWebsite(e.target.value)}>
+            <option value="without">No website (best)</option>
             <option value="all">Any</option>
-            <option value="with">Has site</option>
-            <option value="without">No site</option>
+            <option value="with">Has website</option>
           </select>
+        </label>
+        <label className="check filter-check">
+          <input
+            type="checkbox"
+            checked={outreachOnly}
+            onChange={(e) => setOutreachOnly(e.target.checked)}
+          />
+          Hot leads only (contact + no site)
         </label>
         <label className="grow">
           Filter list
@@ -552,7 +566,10 @@ function FindView({ config, onSent }) {
         <p className="meta-line">
           <strong>{placeLabel}</strong>
           <span>
-            {businesses.length} found · {leads.length} shown · {selected.size} selected
+            {businesses.length} with contact
+            {quality?.outreachReady != null ? ` · ${quality.outreachReady} hot (no site)` : ''}
+            {' · '}
+            {leads.length} shown · {selected.size} selected
           </span>
         </p>
       ) : null}
@@ -567,14 +584,15 @@ function FindView({ config, onSent }) {
       <div className="table-wrap leads-table">
         <table>
           <thead>
-            <tr>
-              <th className="check-col" />
-              <th>Business</th>
-              <th>Category</th>
-              <th>Email</th>
-              <th>Phone</th>
-              <th />
-            </tr>
+              <tr>
+                <th className="check-col" />
+                <th>Business</th>
+                <th>Fit</th>
+                <th>Category</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th />
+              </tr>
           </thead>
           <tbody>
             {leads.length ? (
@@ -596,6 +614,13 @@ function FindView({ config, onSent }) {
                       </a>
                     ) : null}
                   </td>
+                  <td>
+                    {b.outreachReady ? (
+                      <span className="tone ok">Hot</span>
+                    ) : (
+                      <span className="tone warn">Has site</span>
+                    )}
+                  </td>
                   <td>{b.category}</td>
                   <td>{b.email || '—'}</td>
                   <td>{b.phone || '—'}</td>
@@ -608,8 +633,10 @@ function FindView({ config, onSent }) {
               ))
             ) : (
               <tr>
-                <td colSpan={6} className="empty-row">
-                  {loading ? 'Searching…' : 'Pick a state and city, then search.'}
+                <td colSpan={7} className="empty-row">
+                  {loading
+                    ? 'Searching outreach-ready leads…'
+                    : 'Pick a state and city, then search.'}
                 </td>
               </tr>
             )}

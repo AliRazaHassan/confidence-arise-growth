@@ -29,7 +29,7 @@ app.use(express.json({ limit: '1mb' }))
 
 const recent = new Map()
 const CACHE_MS = 25 * 60 * 1000
-const CACHE_VERSION = 'usa-v3'
+const CACHE_VERSION = 'usa-v4-leads'
 
 function siteConfig() {
   return {
@@ -132,6 +132,7 @@ app.get('/api/businesses', requireAuth, async (req, res) => {
       businesses: result.businesses,
       count: result.businesses.length,
       totalFound: result.totalFound,
+      quality: result.quality || null,
       searchId: searchMeta.id,
     }
     recent.set(cacheKey, { at: Date.now(), payload })

@@ -142,12 +142,12 @@ export const CITIES_BY_STATE = {
 }
 
 export const CATEGORY_FILTERS = [
-  { id: 'all', label: 'All businesses' },
+  { id: 'all', label: 'All types' },
   { id: 'shop', label: 'Shops / retail' },
   { id: 'restaurant', label: 'Food & drink' },
   { id: 'office', label: 'Offices / services' },
   { id: 'healthcare', label: 'Healthcare' },
-  { id: 'tourism', label: 'Hotels / tourism' },
+  { id: 'tourism', label: 'Hotels only' },
 ]
 
 export function stateName(code) {
