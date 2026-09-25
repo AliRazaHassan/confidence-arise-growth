@@ -29,7 +29,7 @@ app.use(express.json({ limit: '1mb' }))
 
 const recent = new Map()
 const CACHE_MS = 25 * 60 * 1000
-const CACHE_VERSION = 'usa-v4-leads'
+const CACHE_VERSION = 'usa-v5-volume'
 
 function siteConfig() {
   return {

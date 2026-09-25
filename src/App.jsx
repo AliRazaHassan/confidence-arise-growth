@@ -286,8 +286,8 @@ function FindView({ config, onSent }) {
   const [postalCode, setPostalCode] = useState('')
   const [category, setCategory] = useState('all')
   const [contact, setContact] = useState('reachable')
-  const [hasWebsite, setHasWebsite] = useState('without')
-  const [outreachOnly, setOutreachOnly] = useState(true)
+  const [hasWebsite, setHasWebsite] = useState('all')
+  const [outreachOnly, setOutreachOnly] = useState(false)
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
@@ -496,8 +496,8 @@ function FindView({ config, onSent }) {
         <label>
           Website
           <select value={hasWebsite} onChange={(e) => setHasWebsite(e.target.value)}>
+            <option value="all">Any website</option>
             <option value="without">No website (best)</option>
-            <option value="all">Any</option>
             <option value="with">Has website</option>
           </select>
         </label>
