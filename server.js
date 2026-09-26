@@ -7,6 +7,7 @@ import { analyzeBusiness, auditWebsite } from './src/intelligence.js'
 import { sendEmail, sendWhatsApp, testEmailConnection, testWhatsAppConnection } from './src/outreach.js'
 import { getWhatsAppSettings, saveWhatsAppSettings } from './src/whatsappSettings.js'
 import { getEmailSettings, saveEmailSettings, providerDefaults } from './src/emailSettings.js'
+import { syncEmailReplies } from './src/emailReplies.js'
 import { buildFollowUp, defaultNextFollowUpAt } from './src/followups.js'
 import {
   defaultEmailBody,
@@ -181,6 +182,15 @@ app.post('/api/crm/lead/:id/reply', requireAuth, (req, res) => {
   if (!text) return res.status(400).json({ error: 'Reply text is required.' })
   const reply = recordInboundReply({ businessId: req.params.id, channel, from, text, externalId })
   res.json({ reply, crm: getLeadCRM(req.params.id) })
+})
+
+app.post('/api/crm/replies/sync-email', requireAuth, async (_req, res) => {
+  try {
+    const summary = await syncEmailReplies({ maxMessages: 50 })
+    res.json({ ok: true, summary, items: listReplies(100) })
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Could not sync email replies.' })
+  }
 })
 
 app.get('/api/crm/replies', requireAuth, (req, res) => {
@@ -500,6 +510,13 @@ app.use((req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' })
   res.sendFile(path.join(__dirname, 'dist', 'index.html'))
 })
+
+const EMAIL_SYNC_MS = Math.max(2, Number(process.env.EMAIL_REPLY_SYNC_MINUTES || 10)) * 60 * 1000
+if (process.env.EMAIL_REPLY_SYNC_ENABLED === 'true') {
+  setInterval(() => {
+    syncEmailReplies({ maxMessages: 50 }).catch((err) => console.error('Email reply sync failed:', err.message))
+  }, EMAIL_SYNC_MS).unref()
+}
 
 app.listen(PORT, () => {
   console.log(`Confidence Arise Growth Agent on http://localhost:${PORT}`)
