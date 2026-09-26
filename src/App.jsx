@@ -95,6 +95,8 @@ function HistoryView() {
   const [searches, setSearches] = useState([])
   const [submissions, setSubmissions] = useState([])
   const [leads, setLeads] = useState([])
+  const [followUps, setFollowUps] = useState([])
+  const [followUpPreview, setFollowUpPreview] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -102,16 +104,18 @@ function HistoryView() {
     setLoading(true)
     setError('')
     try {
-      const [s, sub, l] = await Promise.all([
+      const [s, sub, l, f] = await Promise.all([
         fetch('/api/history/searches?limit=50', { credentials: 'include' }).then((r) => r.json()),
         fetch('/api/history/submissions?limit=100', { credentials: 'include' }).then((r) =>
           r.json(),
         ),
         fetch('/api/history/leads?limit=200', { credentials: 'include' }).then((r) => r.json()),
+        fetch('/api/crm/follow-ups?limit=100', { credentials: 'include' }).then((r) => r.json()),
       ])
       setSearches(s.items || [])
       setSubmissions(sub.items || [])
       setLeads(l.items || [])
+      setFollowUps(f.items || [])
     } catch (err) {
       setError(err.message || 'Could not load history')
     } finally {
@@ -122,6 +126,23 @@ function HistoryView() {
   useEffect(() => {
     load()
   }, [load])
+
+  async function previewFollowUp(lead) {
+    setError('')
+    try {
+      const res = await fetch(`/api/crm/lead/${encodeURIComponent(lead.id)}/follow-up/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ business: lead }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not generate follow-up')
+      setFollowUpPreview({ lead, ...data })
+    } catch (err) {
+      setError(err.message)
+    }
+  }
 
   return (
     <div className="view history-view">
@@ -137,6 +158,7 @@ function HistoryView() {
 
       <div className="tabs" role="tablist">
         {[
+          { id: 'followups', label: `Due follow-ups (${followUps.length})` },
           { id: 'submissions', label: `Submissions (${submissions.length})` },
           { id: 'leads', label: `Leads (${leads.length})` },
           { id: 'searches', label: `Searches (${searches.length})` },
@@ -155,6 +177,25 @@ function HistoryView() {
 
       {error ? <p className="error">{error}</p> : null}
       {loading ? <p className="muted">Loading history…</p> : null}
+
+      {!loading && tab === 'followups' ? (
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>Lead</th><th>Stage</th><th>Due</th><th>Sequence</th><th>Action</th></tr></thead>
+            <tbody>
+              {followUps.length ? followUps.map((row) => (
+                <tr key={row.id}>
+                  <td><strong>{row.name}</strong><div className="cell-sub">{row.email || row.phone || '—'}</div></td>
+                  <td><span className="tone warn">{row.crm?.status || 'contacted'}</span></td>
+                  <td>{fmtDate(row.crm?.nextFollowUpAt)}</td>
+                  <td>Follow-up #{Math.min(Number(row.crm?.followUpCount || 0) + 1, 3)} of 3</td>
+                  <td><button type="button" className="btn-primary tiny" onClick={() => previewFollowUp(row)}>Generate</button></td>
+                </tr>
+              )) : <tr><td colSpan={5} className="empty-row">No follow-ups are due right now.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
 
       {!loading && tab === 'submissions' ? (
         <div className="table-wrap">
@@ -275,6 +316,17 @@ function HistoryView() {
             </tbody>
           </table>
         </div>
+      ) : null}
+      {followUpPreview ? (
+        <aside className="drawer">
+          <div className="drawer-head">
+            <div><h3>{followUpPreview.lead.name}</h3><div className="cell-sub">Follow-up #{followUpPreview.message.step} of 3{followUpPreview.message.final ? ' · final' : ''}</div></div>
+            <button type="button" className="btn-ghost tiny" onClick={() => setFollowUpPreview(null)}>Close</button>
+          </div>
+          <h4>Email subject</h4><p className="subj">{followUpPreview.message.subject}</p>
+          <h4>Email</h4><pre>{followUpPreview.message.email}</pre>
+          <h4>WhatsApp</h4><pre>{followUpPreview.message.whatsapp}</pre>
+        </aside>
       ) : null}
     </div>
   )
