@@ -1,4 +1,4 @@
-import { baselineBusinessAnalysis } from './intelligence.js'
+import { analyzeBusiness, baselineBusinessAnalysis } from './intelligence.js'
 import { discoverWebBusinesses, webDiscoveryConfigured } from './webDiscovery.js'
 import { cityCoords, stateName, COUNTRY } from './usa.js'
 
@@ -195,7 +195,7 @@ function elementToBusiness(el) {
     lon: el.lon ?? el.center?.lon ?? null,
   }
   business.legacyScore = leadScore(business)
-  business.intelligence = baselineBusinessAnalysis(business)
+  business.intelligence = analyzeBusiness(business, row.websiteAudit || null)
   business.opportunityScore = business.intelligence.opportunityScore
   business.confidenceScore = business.intelligence.confidenceScore
   business.recommendedServices = business.intelligence.recommendedServices
@@ -360,15 +360,26 @@ function dedupe(list) {
   const out = []
   for (const b of list) {
     if (!b) continue
-    const phone = String(b.phone || '').replace(/\\D/g, '')
+    const phone = String(b.phone || '').replace(/\D/g, '')
     const email = String(b.email || '').toLowerCase()
     const domain = (() => {
-      try { return b.website ? new URL(b.website).hostname.replace(/^www\\./i, '').toLowerCase() : '' } catch { return '' }
+      try { return b.website ? new URL(b.website).hostname.replace(/^www\./i, '').toLowerCase() : '' } catch { return '' }
     })()
     const name = String(b.name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-    const keys = [phone && `p:${phone}`, email && `e:${email}`, domain && `d:${domain}`, name && `n:${name}`].filter(Boolean)
-    if (keys.some((key) => seen.has(key))) continue
-    keys.forEach((key) => seen.add(key))
+    const address = String(b.address || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
+    const strongKeys = [
+      phone && `p:${phone}`,
+      email && `e:${email}`,
+      domain && `d:${domain}`,
+    ].filter(Boolean)
+    if (strongKeys.some((key) => seen.has(key))) continue
+
+    const fallbackKey = !strongKeys.length && name ? `n:${name}|a:${address}` : null
+    if (fallbackKey && seen.has(fallbackKey)) continue
+
+    strongKeys.forEach((key) => seen.add(key))
+    if (fallbackKey) seen.add(fallbackKey)
     out.push(b)
   }
   return out
@@ -470,19 +481,18 @@ export async function searchBusinesses({ state, city, postalCode }) {
   })
 
   if (!businesses.length) {
-    throw new Error(
-      'No outreach-ready businesses with phone/email found here. Try another city.',
-    )
+    throw new Error('No businesses were discovered here. Try another city or ZIP.')
   }
 
   const ready = businesses.filter((b) => b.outreachReady).length
+  const withContact = businesses.filter((b) => b.hasPhone || b.hasEmail).length
 
   return {
     place: { ...place, country: COUNTRY.name },
     businesses: businesses.slice(0, MAX_RESULTS),
     totalFound: businesses.length,
     quality: {
-      withContact: businesses.length,
+      withContact,
       outreachReady: ready,
       sources: [...new Set(businesses.map((b) => b.discoverySource || 'osm'))],
       webDiscovery: webDiscoveryConfigured(),
