@@ -3,7 +3,7 @@ import { auditWebsite } from './intelligence.js'
 const UA = 'ConfidenceAriseGrowth/3.0 (business discovery)'
 const SEARCH_TIMEOUT = 7000
 const MAX_WEB_RESULTS = 60
-const MAX_WEBSITE_ENRICH = 24
+const MAX_WEBSITE_ENRICH = 12
 
 const CATEGORY_QUERIES = {
   restaurant: ['restaurants', 'cafes', 'catering', 'food services', 'fine dining'],
@@ -169,17 +169,17 @@ export async function discoverWebBusinesses({ place, city, state, categories = O
 
   for (const category of selected) {
     for (const term of CATEGORY_QUERIES[category] || CATEGORY_QUERIES.other) {
-      queries.push(`${term} in ${cityText}`)
+      queries.push({ query: `${term} in ${cityText}`, category })
     }
   }
 
   // Grid coordinates are used as discovery coverage signals, while search engines do the semantic lookup.
-  const gridQueries = queries.flatMap((q) => points.slice(0, 3).map((p) => `${q} near ${p.lat.toFixed(3)},${p.lon.toFixed(3)}`))
-  const cappedQueries = gridQueries.slice(0, 36)
+  const gridQueries = queries.flatMap((item) => points.slice(0, 3).map((p) => ({ ...item, query: `${item.query} near ${p.lat.toFixed(3)},${p.lon.toFixed(3)}` })))
+  const cappedQueries = gridQueries.slice(0, 18)
 
   const [google, bing] = await Promise.all([
-    Promise.all(cappedQueries.map((q) => googleSearch(q, 10))),
-    Promise.all(cappedQueries.map((q) => bingSearch(q, 10))),
+    Promise.all(cappedQueries.map((q) => googleSearch(q.query, 10).then((rows) => rows.map((x) => ({ ...x, category: q.category })))),
+    Promise.all(cappedQueries.map((q) => bingSearch(q.query, 10).then((rows) => rows.map((x) => ({ ...x, category: q.category })))),
   ])
 
   let results = [...google.flat(), ...bing.flat()]
