@@ -1,4 +1,5 @@
 import { baselineBusinessAnalysis } from './intelligence.js'
+import { discoverWebBusinesses, webDiscoveryConfigured } from './webDiscovery.js'
 import { cityCoords, stateName, COUNTRY } from './usa.js'
 
 const OVERPASS_ENDPOINTS = [
@@ -10,6 +11,7 @@ const OVERPASS_ENDPOINTS = [
 const UA =
   'ConfidenceAriseGrowth/2.1 (https://confidencearise.com; USA outreach leads)'
 const MAX_RESULTS = 1000
+const GRID_OFFSETS = [[-0.7, -0.7], [-0.7, 0.7], [0.7, -0.7], [0.7, 0.7]]
 
 const SKIP_AMENITY = new Set([
   'parking',
@@ -358,12 +360,64 @@ function dedupe(list) {
   const out = []
   for (const b of list) {
     if (!b) continue
-    const key = `${b.name.toLowerCase()}|${(b.phone || '').toLowerCase()}|${(b.email || '').toLowerCase()}`
-    if (seen.has(key)) continue
-    seen.add(key)
+    const phone = String(b.phone || '').replace(/\\D/g, '')
+    const email = String(b.email || '').toLowerCase()
+    const domain = (() => {
+      try { return b.website ? new URL(b.website).hostname.replace(/^www\\./i, '').toLowerCase() : '' } catch { return '' }
+    })()
+    const name = String(b.name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+    const keys = [phone && `p:${phone}`, email && `e:${email}`, domain && `d:${domain}`, name && `n:${name}`].filter(Boolean)
+    if (keys.some((key) => seen.has(key))) continue
+    keys.forEach((key) => seen.add(key))
     out.push(b)
   }
   return out
+}
+
+function webResultToBusiness(row, index) {
+  const category = row.category || 'Business · Web discovery'
+  const business = {
+    id: `web/${row.websiteDomain || index}`,
+    name: row.name,
+    category,
+    bucket: 'other',
+    address: row.address || 'Address not listed',
+    phone: normalizePhone(row.phone),
+    email: normalizeEmail(row.email),
+    website: normalizeWebsite(row.website),
+    hasPhone: Boolean(row.phone),
+    hasEmail: Boolean(row.email),
+    hasWebsite: Boolean(row.website),
+    socialLinks: row.socialLinks || [],
+    socialSignals: row.socialSignals || 0,
+    source: row.source || 'web-search',
+    discoverySource: 'web',
+    outreachReady: Boolean(row.phone || row.email),
+    lat: null,
+    lon: null,
+  }
+  business.legacyScore = leadScore(business)
+  business.intelligence = baselineBusinessAnalysis(business)
+  business.opportunityScore = business.intelligence.opportunityScore
+  business.confidenceScore = business.intelligence.confidenceScore
+  business.recommendedServices = business.intelligence.recommendedServices
+  business.opportunities = business.intelligence.reasoning
+  return business
+}
+
+function gridPlaces(place) {
+  const radius = Math.max(Math.floor((place.radius || 6500) * 0.65), 3500)
+  const latStep = radius / 111000
+  const lonStep = radius / (111000 * Math.max(Math.cos((place.lat * Math.PI) / 180), 0.2))
+  return [
+    place,
+    ...GRID_OFFSETS.map(([y, x]) => ({
+      ...place,
+      lat: place.lat + y * latStep,
+      lon: place.lon + x * lonStep,
+      radius,
+    })),
+  ]
 }
 
 export async function searchBusinesses({ state, city, postalCode }) {
@@ -380,17 +434,36 @@ export async function searchBusinesses({ state, city, postalCode }) {
     postalCode: postalCode?.trim() || '',
   })
 
+  const places = gridPlaces(place)
   let elements = []
+  const osmResults = await Promise.all(
+    places.map(async (gridPlace) => {
+      try {
+        const data = await fetchOverpass(buildNodeLeadQuery(gridPlace), 16000)
+        return data.elements || []
+      } catch {
+        return []
+      }
+    }),
+  )
+  elements = osmResults.flat()
+
+  let webBusinesses = []
   try {
-    const data = await fetchOverpass(buildNodeLeadQuery(place), 22000)
-    elements = data.elements || []
+    webBusinesses = await discoverWebBusinesses({
+      place,
+      city: city?.trim() || place.city,
+      state: state?.trim() || place.state,
+    })
   } catch {
-    const lighter = { ...place, radius: Math.max(Math.floor(place.radius * 0.7), 4000) }
-    const data = await fetchOverpass(buildNodeLeadQuery(lighter), 22000)
-    elements = data.elements || []
+    webBusinesses = []
   }
 
-  const businesses = dedupe(elements.map(elementToBusiness)).sort((a, b) => {
+  const osmBusinesses = elements.map(elementToBusiness).filter(Boolean)
+  const businesses = dedupe([
+    ...osmBusinesses,
+    ...webBusinesses.map(webResultToBusiness),
+  ]).sort((a, b) => {
     const d = b.opportunityScore - a.opportunityScore
     if (d) return d
     return a.name.localeCompare(b.name)
@@ -411,7 +484,8 @@ export async function searchBusinesses({ state, city, postalCode }) {
     quality: {
       withContact: businesses.length,
       outreachReady: ready,
-      source: 'osm-contact-tagged',
+      sources: [...new Set(businesses.map((b) => b.discoverySource || 'osm'))],
+      webDiscovery: webDiscoveryConfigured(),
     },
   }
 }
