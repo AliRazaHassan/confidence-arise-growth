@@ -400,7 +400,4182 @@ function DashboardView() {
   }, [])
   const cards = stats ? [
     ['Leads', stats.leads], ['Contacted', stats.contacted], ['Replies', stats.replied],
-    ['Pipeline value', '
+    ['Pipeline value', ' ['Proposals', stats.proposals], ['Won', stats.won],
+    ['Follow-ups due', stats.followUpsDue], ['Reply rate', `${stats.replyRate}%`], ['Win rate', `${stats.winRate}%`],
+  ] : []
+  return <div className="view">
+    <header className="view-head"><div><h2>Growth Command Center</h2><p>Live CRM funnel based only on stored outreach and reply activity.</p></div></header>
+    {error ? <p className="error">{error}</p> : null}
+    <div className="metric-grid">{cards.map(([label,value]) => <div className="metric-card" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
+    {stats ? <div className="settings-card funnel-card"><h3>Pipeline</h3><div className="funnel-row"><span>Contacted</span><strong>{stats.contacted}</strong></div><div className="funnel-row"><span>Replied</span><strong>{stats.replied}</strong></div><div className="funnel-row"><span>Qualified</span><strong>{stats.qualified}</strong></div><div className="funnel-row"><span>Proposal</span><strong>{stats.proposals}</strong></div><div className="funnel-row"><span>Won</span><strong>{stats.won}</strong></div></div> : <p className="muted">Loading metrics…</p>}
+  </div>
+}
+
+function SettingsView({ config, onSaved }) {
+  const account = config?.emailAccount
+  const [form, setForm] = useState({
+    provider: account?.provider || 'gmail',
+    email: account?.email || '',
+    fromName: account?.fromName || 'Confidence Arise',
+    password: '',
+    host: account?.host || '',
+    port: account?.port || 587,
+    secure: Boolean(account?.secure),
+  })
+  const wa = config?.whatsappAccount
+  const [waForm, setWaForm] = useState({
+    phoneNumberId: wa?.phoneNumberId || '',
+    businessAccountId: wa?.businessAccountId || '',
+    graphVersion: wa?.graphVersion || 'v21.0',
+    accessToken: '',
+  })
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+  const [waBusy, setWaBusy] = useState(false)
+  const [waMessage, setWaMessage] = useState('')
+
+  function field(name, value) { setForm((x) => ({ ...x, [name]: value })) }
+
+  async function save(e) {
+    e.preventDefault()
+    setBusy(true)
+    setMessage('')
+    try {
+      const res = await fetch('/api/settings/email', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(form),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not connect email')
+      setForm((x) => ({ ...x, password: '' }))
+      setMessage('Email connected and SMTP login verified.')
+      onSaved?.()
+    } catch (err) {
+      setMessage(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function saveWhatsApp(e) {
+    e.preventDefault()
+    setWaBusy(true); setWaMessage('')
+    try {
+      const res = await fetch('/api/settings/whatsapp', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(waForm) })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not connect WhatsApp')
+      setWaForm((x) => ({ ...x, accessToken: '' }))
+      setWaMessage('WhatsApp Cloud API connected and verified.')
+      onSaved?.()
+    } catch (err) { setWaMessage(err.message) } finally { setWaBusy(false) }
+  }
+
+  const custom = form.provider === 'custom'
+  return (
+    <div className="view settings-view">
+      <header className="view-head"><div><h2>Settings</h2><p>Connect the mailbox used for outreach and follow-ups.</p></div></header>
+      <form className="settings-card" onSubmit={save}>
+        <h3>Email account</h3>
+        <p className="muted">Credentials are stored encrypted on the server and the password is never returned to this browser.</p>
+        <label>Provider
+          <select value={form.provider} onChange={(e) => field('provider', e.target.value)}>
+            <option value="gmail">Gmail / Google Workspace</option>
+            <option value="outlook">Outlook / Microsoft 365</option>
+            <option value="custom">Custom SMTP</option>
+          </select>
+        </label>
+        <label>Sender name<input value={form.fromName} onChange={(e) => field('fromName', e.target.value)} /></label>
+        <label>Email<input type="email" required value={form.email} onChange={(e) => field('email', e.target.value)} placeholder="you@company.com" /></label>
+        <label>{form.provider === 'gmail' ? 'Google App Password' : 'SMTP password'}
+          <input type="password" value={form.password} onChange={(e) => field('password', e.target.value)} placeholder={account?.configured ? 'Leave blank to keep current password' : 'Required'} />
+        </label>
+        {custom ? <>
+          <label>SMTP host<input required value={form.host} onChange={(e) => field('host', e.target.value)} placeholder="smtp.example.com" /></label>
+          <label>SMTP port<input type="number" required value={form.port} onChange={(e) => field('port', Number(e.target.value))} /></label>
+          <label className="check"><input type="checkbox" checked={form.secure} onChange={(e) => field('secure', e.target.checked)} />Use TLS/SSL immediately</label>
+        </> : null}
+        {form.provider === 'gmail' ? <p className="cell-sub">Gmail requires 2-Step Verification and an App Password; do not enter your normal Google password.</p> : null}
+        {message ? <p className={message.startsWith('Email connected') ? 'success-line' : 'error'}>{message}</p> : null}
+        <button className="btn-primary" type="submit" disabled={busy}>{busy ? 'Testing connection…' : account?.configured ? 'Test & Update' : 'Test & Connect'}</button>
+        {account?.configured ? <p className="cell-sub">Currently connected: {account.email} via {account.provider}</p> : null}
+      </form>
+      <form className="settings-card" onSubmit={saveWhatsApp}>
+        <h3>WhatsApp Business</h3>
+        <p className="muted">Connect Meta WhatsApp Cloud API. The access token is encrypted and never returned to the browser.</p>
+        <label>Phone Number ID<input required value={waForm.phoneNumberId} onChange={(e) => setWaForm((x) => ({ ...x, phoneNumberId: e.target.value }))} /></label>
+        <label>WhatsApp Business Account ID<input value={waForm.businessAccountId} onChange={(e) => setWaForm((x) => ({ ...x, businessAccountId: e.target.value }))} /></label>
+        <label>Access Token<input type="password" value={waForm.accessToken} onChange={(e) => setWaForm((x) => ({ ...x, accessToken: e.target.value }))} placeholder={wa?.configured ? 'Leave blank to keep current token' : 'Required'} /></label>
+        <label>Graph API Version<input value={waForm.graphVersion} onChange={(e) => setWaForm((x) => ({ ...x, graphVersion: e.target.value }))} /></label>
+        {waMessage ? <p className={waMessage.startsWith('WhatsApp Cloud') ? 'success-line' : 'error'}>{waMessage}</p> : null}
+        <button className="btn-primary" type="submit" disabled={waBusy}>{waBusy ? 'Testing connection…' : wa?.configured ? 'Test & Update WhatsApp' : 'Test & Connect WhatsApp'}</button>
+        {wa?.configured ? <><p className="cell-sub">Connected Phone Number ID: {wa.phoneNumberId}</p><p className="cell-sub">Webhook: /api/webhooks/whatsapp · Verify token: {wa.verifyToken}</p></> : null}
+      </form>
+    </div>
+  )
+}
+
+function FindView({ config, onSent }) {
+  const [state, setState] = useState('TX')
+  const [city, setCity] = useState('')
+  const [postalCode, setPostalCode] = useState('')
+  const [category, setCategory] = useState('all')
+  const [contact, setContact] = useState('reachable')
+  const [hasWebsite, setHasWebsite] = useState('all')
+  const [outreachOnly, setOutreachOnly] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState('')
+  const [placeLabel, setPlaceLabel] = useState('')
+  const [businesses, setBusinesses] = useState([])
+  const [quality, setQuality] = useState(null)
+  const [selected, setSelected] = useState(() => new Set())
+  const [sendChannels, setSendChannels] = useState({ email: true, whatsapp: true })
+  const [dryRun, setDryRun] = useState(true)
+  const [lastSend, setLastSend] = useState(null)
+  const [preview, setPreview] = useState(null)
+  const [analysis, setAnalysis] = useState(null)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [minScore, setMinScore] = useState(0)
+  const [q, setQ] = useState('')
+  const [crm, setCrm] = useState(null)
+
+  const stateCities = useMemo(() => citiesForState(state), [state])
+
+  useEffect(() => {
+    if (!stateCities.includes(city)) setCity(stateCities[0] || '')
+  }, [state, stateCities, city])
+
+  const leads = useMemo(() => {
+    let list = applyLeadFilters(businesses, { category, contact, hasWebsite, outreachOnly })
+    if (minScore > 0) list = list.filter((b) => (b.opportunityScore || 0) >= minScore)
+    const needle = q.trim().toLowerCase()
+    if (needle) {
+      list = list.filter(
+        (b) =>
+          b.name.toLowerCase().includes(needle) ||
+          (b.address || '').toLowerCase().includes(needle) ||
+          (b.email || '').toLowerCase().includes(needle),
+      )
+    }
+    return list
+  }, [businesses, category, contact, hasWebsite, outreachOnly, minScore, q])
+
+  const selectedBusinesses = useMemo(
+    () => leads.filter((b) => selected.has(b.id)),
+    [leads, selected],
+  )
+
+  async function onSearch(e) {
+    e.preventDefault()
+    setError('')
+    setSelected(new Set())
+    setLastSend(null)
+    setPreview(null)
+    if (!state) return setError('Select a state.')
+    if (!city && !postalCode.trim()) return setError('Select a city or ZIP.')
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({ state, city, postalCode: postalCode.trim() })
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 40000)
+      const res = await fetch(`/api/businesses?${params}`, {
+        signal: controller.signal,
+        credentials: 'include',
+      })
+      clearTimeout(timer)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Search failed')
+      setPlaceLabel(data.place?.label || `${city}, ${state}`)
+      setBusinesses(data.businesses || [])
+      setQuality(data.quality || null)
+    } catch (err) {
+      setBusinesses([])
+      setError(err?.name === 'AbortError' ? 'Timed out — try again.' : err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function toggle(id) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function analyzeOne(business) {
+    setAnalyzing(true)
+    setError('')
+    try {
+      const res = await fetch('/api/intelligence/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ business }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Analysis failed')
+      setAnalysis({ business, ...data })
+    } catch (err) {
+      setError(err.message || 'Analysis failed')
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  async function saveCRM(business, patch) {
+    const res = await fetch(`/api/crm/lead/${encodeURIComponent(business.id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(patch),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || 'CRM update failed')
+    setCrm(data.crm)
+  }
+
+  async function openCRM(business) {
+    setError('')
+    try {
+      const res = await fetch(`/api/crm/lead/${encodeURIComponent(business.id)}`, { credentials: 'include' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not load lead')
+      setCrm({ business, ...(data.crm || { id: business.id, status: 'new', notes: '', nextFollowUpAt: null, outcome: null }) })
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function previewOne(business) {
+    const res = await fetch('/api/outreach/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ business }),
+    })
+    const data = await res.json()
+    if (!res.ok) return setError(data.error || 'Preview failed')
+    setPreview({ business, ...data })
+  }
+
+  async function sendSelected() {
+    if (!selectedBusinesses.length) return setError('Select at least one lead.')
+    const channels = []
+    if (sendChannels.email) channels.push('email')
+    if (sendChannels.whatsapp) channels.push('whatsapp')
+    if (!channels.length) return setError('Pick Email and/or WhatsApp.')
+
+    setSending(true)
+    setError('')
+    setLastSend(null)
+    try {
+      const res = await fetch('/api/outreach/send-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          businesses: selectedBusinesses,
+          channels,
+          dryRun,
+          limit: 40,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Send failed')
+      setLastSend(data)
+      onSent?.()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="view find-view">
+      <header className="view-head">
+        <div>
+          <h2>Find leads</h2>
+          <p>
+            Outreach-ready US businesses only (phone or email). Junk map POIs, embassies, and
+            artwork are excluded — unlike the old Italy dump.
+          </p>
+        </div>
+        <div className="api-pills">
+          <span className={config?.emailReady ? 'pill ok' : 'pill warn'}>
+            Email {config?.emailReady ? 'ready' : 'dry-run'}
+          </span>
+          <span className={config?.whatsappReady ? 'pill ok' : 'pill warn'}>
+            WhatsApp {config?.whatsappReady ? 'ready' : 'dry-run'}
+          </span>
+        </div>
+      </header>
+
+      <form className="toolbar" onSubmit={onSearch}>
+        <label>
+          State
+          <select
+            value={state}
+            onChange={(e) => {
+              setState(e.target.value)
+              setBusinesses([])
+              setPlaceLabel('')
+            }}
+          >
+            {US_STATES.map((s) => (
+              <option key={s.code} value={s.code}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          City
+          <select value={city} onChange={(e) => setCity(e.target.value)}>
+            {stateCities.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          ZIP
+          <input
+            value={postalCode}
+            onChange={(e) => setPostalCode(e.target.value)}
+            placeholder="Optional"
+          />
+        </label>
+        <button type="submit" className="btn-primary" disabled={loading}>
+          {loading ? 'Searching…' : 'Search'}
+        </button>
+      </form>
+
+      <div className="filters-bar">
+        <label>
+          Category
+          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            {CATEGORY_FILTERS.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Contact
+          <select value={contact} onChange={(e) => setContact(e.target.value)}>
+            <option value="reachable">Email or phone</option>
+            <option value="email">Has email</option>
+            <option value="phone">Has phone</option>
+            <option value="both">Both</option>
+            <option value="all">Any</option>
+          </select>
+        </label>
+        <label>
+          Website
+          <select value={hasWebsite} onChange={(e) => setHasWebsite(e.target.value)}>
+            <option value="all">Any website</option>
+            <option value="without">No website (best)</option>
+            <option value="with">Has website</option>
+          </select>
+        </label>
+        <label className="check filter-check">
+          <input
+            type="checkbox"
+            checked={outreachOnly}
+            onChange={(e) => setOutreachOnly(e.target.checked)}
+          />
+          Hot leads only (contact + no site)
+        </label>
+        <label>
+          Opportunity
+          <select value={minScore} onChange={(e) => setMinScore(Number(e.target.value))}>
+            <option value={0}>Any score</option>
+            <option value={60}>60+</option>
+            <option value={70}>70+</option>
+            <option value={80}>80+</option>
+            <option value={90}>90+</option>
+          </select>
+        </label>
+        <label className="grow">
+          Filter list
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search name, address, email…"
+          />
+        </label>
+      </div>
+
+      <div className="outreach-bar">
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={sendChannels.email}
+            onChange={(e) => setSendChannels((s) => ({ ...s, email: e.target.checked }))}
+          />
+          Email
+        </label>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={sendChannels.whatsapp}
+            onChange={(e) => setSendChannels((s) => ({ ...s, whatsapp: e.target.checked }))}
+          />
+          WhatsApp
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
+          Dry run
+        </label>
+        <div className="spacer" />
+        <button
+          type="button"
+          className="btn-ghost"
+          onClick={() => setSelected(new Set(leads.map((b) => b.id)))}
+          disabled={!leads.length}
+        >
+          Select all ({leads.length})
+        </button>
+        <button type="button" className="btn-ghost" onClick={() => setSelected(new Set())}>
+          Clear
+        </button>
+        <button
+          type="button"
+          className="btn-accent"
+          onClick={sendSelected}
+          disabled={sending || !selected.size}
+        >
+          {sending ? 'Sending…' : dryRun ? `Preview send (${selected.size})` : `Send (${selected.size})`}
+        </button>
+      </div>
+
+      {placeLabel ? (
+        <p className="meta-line">
+          <strong>{placeLabel}</strong>
+          <span>
+            {businesses.length} with contact
+            {quality?.outreachReady != null ? ` · ${quality.outreachReady} legacy hot leads` : ''}
+            {businesses.length ? ` · ${businesses.filter((b) => (b.opportunityScore || 0) >= 70).length} high opportunity` : ''}
+            {' · '}
+            {leads.length} shown · {selected.size} selected
+          </span>
+        </p>
+      ) : null}
+      {error ? <p className="error">{error}</p> : null}
+      {lastSend ? (
+        <p className="success-line">
+          Logged {lastSend.count} submission{lastSend.count === 1 ? '' : 's'}
+          {dryRun ? ' (dry run)' : ''}. See History → Submissions.
+        </p>
+      ) : null}
+
+      <div className="table-wrap leads-table">
+        <table>
+          <thead>
+              <tr>
+                <th className="check-col" />
+                <th>Business</th>
+                <th>Opportunity</th>
+                <th>Recommended</th>
+                <th>Category</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th />
+              </tr>
+          </thead>
+          <tbody>
+            {leads.length ? (
+              leads.map((b) => (
+                <tr key={b.id} className={selected.has(b.id) ? 'row-on' : ''}>
+                  <td className="check-col">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(b.id)}
+                      onChange={() => toggle(b.id)}
+                    />
+                  </td>
+                  <td>
+                    <strong>{b.name}</strong>
+                    <div className="cell-sub">{b.address}</div>
+                    {b.website ? (
+                      <a href={b.website} target="_blank" rel="noreferrer" className="cell-link">
+                        Website
+                      </a>
+                    ) : null}
+                  </td>
+                  <td>
+                    <strong className="score-value">{b.opportunityScore ?? '—'}/100</strong>
+                    <div className="cell-sub">{b.confidenceScore ?? '—'}% confidence</div>
+                  </td>
+                  <td>
+                    {b.recommendedServices?.[0]?.name || 'Analyze for recommendation'}
+                  </td>
+                  <td>{b.category}</td>
+                  <td>{b.email || '—'}</td>
+                  <td>{b.phone || '—'}</td>
+                  <td>
+                    <button type="button" className="btn-ghost tiny" onClick={() => analyzeOne(b)} disabled={analyzing}>Analyze</button>
+                    <button type="button" className="btn-ghost tiny" onClick={() => openCRM(b)}>CRM</button>
+                    <button type="button" className="btn-ghost tiny" onClick={() => previewOne(b)}>
+                      Preview
+                    </button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={8} className="empty-row">
+                  {loading
+                    ? 'Searching outreach-ready leads…'
+                    : 'Pick a state and city, then search.'}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {analysis ? (
+        <aside className="drawer intelligence-drawer">
+          <div className="drawer-head">
+            <div><h3>{analysis.business.name}</h3><div className="cell-sub">Business Growth Intelligence</div></div>
+            <button type="button" className="btn-ghost tiny" onClick={() => setAnalysis(null)}>Close</button>
+          </div>
+          <div className="score-hero"><strong>{analysis.intelligence.opportunityScore}/100</strong><span>Growth Opportunity</span></div>
+          <h4>Why this lead</h4>
+          <ul className="reason-list">{analysis.intelligence.reasoning.map((x, i) => <li key={i}>{x}</li>)}</ul>
+          <h4>Recommended services</h4>
+          <div className="service-list">{analysis.intelligence.recommendedServices.length ? analysis.intelligence.recommendedServices.map((s) => <div className="service-item" key={s.id}><strong>{s.name}</strong><span>{s.reason}</span></div>) : <p className="muted">No service recommendation can be supported by the available evidence yet.</p>}</div>
+          <h4>Score breakdown</h4>
+          <div className="breakdown">{analysis.intelligence.breakdown.map((x) => <div className="breakdown-row" key={x.label}><span>{x.label}</span><strong>{x.points}/{x.max}</strong></div>)}</div>
+          {analysis.audit?.reachable ? <p className="muted">Website audited successfully. Only observable page signals were used.</p> : analysis.business.website ? <p className="muted">Website audit unavailable: {analysis.audit?.error || 'unreachable'}.</p> : null}
+        </aside>
+      ) : null}
+
+      {crm ? (
+        <aside className="drawer crm-drawer">
+          <div className="drawer-head">
+            <div><h3>{crm.business?.name || 'Lead CRM'}</h3><div className="cell-sub">Pipeline memory</div></div>
+            <button type="button" className="btn-ghost tiny" onClick={() => setCrm(null)}>Close</button>
+          </div>
+          <label>Status
+            <select value={crm.status || 'new'} onChange={(e) => saveCRM(crm.business, { status: e.target.value })}>
+              {['new','contacted','replied','qualified','proposal','won','lost','paused'].map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </label>
+          <label>Next follow-up
+            <input type="datetime-local" value={crm.nextFollowUpAt ? String(crm.nextFollowUpAt).slice(0,16) : ''} onChange={(e) => saveCRM(crm.business, { nextFollowUpAt: e.target.value ? new Date(e.target.value).toISOString() : null })} />
+          </label>
+          <label>Deal value ($)
+            <input type="number" min="0" value={crm.dealValue || ''} placeholder="e.g. 1500" onChange={(e) => setCrm((x) => ({ ...x, dealValue: e.target.value }))} onBlur={() => saveCRM(crm.business, { dealValue: Number(crm.dealValue || 0) })} />
+          </label>
+          <label>Outcome
+            <input value={crm.outcome || ''} placeholder="e.g. interested, no response" onChange={(e) => setCrm((x) => ({ ...x, outcome: e.target.value }))} onBlur={() => saveCRM(crm.business, { outcome: crm.outcome || null })} />
+          </label>
+          <label>Notes
+            <textarea rows="5" value={crm.notes || ''} placeholder="Conversation notes, objections, requirements…" onChange={(e) => setCrm((x) => ({ ...x, notes: e.target.value }))} onBlur={() => saveCRM(crm.business, { notes: crm.notes || '' })} />
+          </label>
+        </aside>
+      ) : null}
+
+      {preview ? (
+        <aside className="drawer">
+          <div className="drawer-head">
+            <h3>{preview.business.name}</h3>
+            <button type="button" className="btn-ghost tiny" onClick={() => setPreview(null)}>
+              Close
+            </button>
+          </div>
+          <h4>Email → {preview.email.to || 'none'}</h4>
+          <p className="subj">{preview.email.subject}</p>
+          <pre>{preview.email.body}</pre>
+          <h4>WhatsApp → {preview.whatsapp.to || 'none'}</h4>
+          <pre>{preview.whatsapp.body}</pre>
+        </aside>
+      ) : null}
+    </div>
+  )
+}
+
+export default function App() {
+  const [user, setUser] = useState(null)
+  const [authChecked, setAuthChecked] = useState(false)
+  const [nav, setNav] = useState('dashboard')
+  const [config, setConfig] = useState(null)
+  const [historyKey, setHistoryKey] = useState(0)
+
+  useEffect(() => {
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.authenticated) setUser({ email: data.email, name: data.name })
+      })
+      .finally(() => setAuthChecked(true))
+  }, [])
+
+  useEffect(() => {
+    if (!user) return
+    fetch('/api/config', { credentials: 'include' })
+      .then((r) => r.json())
+      .then(setConfig)
+      .catch(() => {})
+  }, [user, historyKey])
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+    setUser(null)
+    setConfig(null)
+  }
+
+  if (!authChecked) {
+    return (
+      <div className="boot">
+        <p>Loading workspace…</p>
+      </div>
+    )
+  }
+
+  if (!user) return <LoginScreen onLoggedIn={setUser} />
+
+  return (
+    <div className="app">
+      <aside className="sidebar">
+        <div className="side-brand">
+          <p className="brand-mark">Confidence Arise</p>
+          <h1>Growth Agent</h1>
+          <p className="side-user">{user.name || 'Naeema'}</p>
+        </div>
+        <nav>
+          {NAV.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={nav === item.id ? 'nav-item on' : 'nav-item'}
+              onClick={() => setNav(item.id)}
+            >
+              {item.label}
+              {item.id === 'history' && config?.history ? (
+                <span className="nav-count">{config.history.submissions || 0}</span>
+              ) : null}
+            </button>
+          ))}
+        </nav>
+        <div className="side-foot">
+          <a href={config?.siteUrl || 'https://confidencearise.com'} target="_blank" rel="noreferrer">
+            confidencearise.com
+          </a>
+          <button type="button" className="btn-ghost tiny" onClick={logout}>
+            Sign out
+          </button>
+        </div>
+      </aside>
+
+      <main className="main">
+        {nav === 'dashboard' ? (
+          <DashboardView />
+        ) : nav === 'find' ? (
+          <FindView
+            config={config}
+            onSent={() => setHistoryKey((k) => k + 1)}
+          />
+        ) : nav === 'settings' ? (
+          <SettingsView config={config} onSaved={() => setHistoryKey((k) => k + 1)} />
+        ) : (
+          <HistoryView key={historyKey} />
+        )}
+      </main>
+    </div>
+  )
+}
+ + Number(stats.pipelineValue || 0).toLocaleString()], ['Won revenue', '
+    ['Qualified', stats.qualified], ['Proposals', stats.proposals], ['Won', stats.won],
+    ['Follow-ups due', stats.followUpsDue], ['Reply rate', `${stats.replyRate}%`], ['Win rate', `${stats.winRate}%`],
+  ] : []
+  return <div className="view">
+    <header className="view-head"><div><h2>Growth Command Center</h2><p>Live CRM funnel based only on stored outreach and reply activity.</p></div></header>
+    {error ? <p className="error">{error}</p> : null}
+    <div className="metric-grid">{cards.map(([label,value]) => <div className="metric-card" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
+    {stats ? <div className="settings-card funnel-card"><h3>Pipeline</h3><div className="funnel-row"><span>Contacted</span><strong>{stats.contacted}</strong></div><div className="funnel-row"><span>Replied</span><strong>{stats.replied}</strong></div><div className="funnel-row"><span>Qualified</span><strong>{stats.qualified}</strong></div><div className="funnel-row"><span>Proposal</span><strong>{stats.proposals}</strong></div><div className="funnel-row"><span>Won</span><strong>{stats.won}</strong></div></div> : <p className="muted">Loading metrics…</p>}
+  </div>
+}
+
+function SettingsView({ config, onSaved }) {
+  const account = config?.emailAccount
+  const [form, setForm] = useState({
+    provider: account?.provider || 'gmail',
+    email: account?.email || '',
+    fromName: account?.fromName || 'Confidence Arise',
+    password: '',
+    host: account?.host || '',
+    port: account?.port || 587,
+    secure: Boolean(account?.secure),
+  })
+  const wa = config?.whatsappAccount
+  const [waForm, setWaForm] = useState({
+    phoneNumberId: wa?.phoneNumberId || '',
+    businessAccountId: wa?.businessAccountId || '',
+    graphVersion: wa?.graphVersion || 'v21.0',
+    accessToken: '',
+  })
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+  const [waBusy, setWaBusy] = useState(false)
+  const [waMessage, setWaMessage] = useState('')
+
+  function field(name, value) { setForm((x) => ({ ...x, [name]: value })) }
+
+  async function save(e) {
+    e.preventDefault()
+    setBusy(true)
+    setMessage('')
+    try {
+      const res = await fetch('/api/settings/email', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(form),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not connect email')
+      setForm((x) => ({ ...x, password: '' }))
+      setMessage('Email connected and SMTP login verified.')
+      onSaved?.()
+    } catch (err) {
+      setMessage(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function saveWhatsApp(e) {
+    e.preventDefault()
+    setWaBusy(true); setWaMessage('')
+    try {
+      const res = await fetch('/api/settings/whatsapp', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(waForm) })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not connect WhatsApp')
+      setWaForm((x) => ({ ...x, accessToken: '' }))
+      setWaMessage('WhatsApp Cloud API connected and verified.')
+      onSaved?.()
+    } catch (err) { setWaMessage(err.message) } finally { setWaBusy(false) }
+  }
+
+  const custom = form.provider === 'custom'
+  return (
+    <div className="view settings-view">
+      <header className="view-head"><div><h2>Settings</h2><p>Connect the mailbox used for outreach and follow-ups.</p></div></header>
+      <form className="settings-card" onSubmit={save}>
+        <h3>Email account</h3>
+        <p className="muted">Credentials are stored encrypted on the server and the password is never returned to this browser.</p>
+        <label>Provider
+          <select value={form.provider} onChange={(e) => field('provider', e.target.value)}>
+            <option value="gmail">Gmail / Google Workspace</option>
+            <option value="outlook">Outlook / Microsoft 365</option>
+            <option value="custom">Custom SMTP</option>
+          </select>
+        </label>
+        <label>Sender name<input value={form.fromName} onChange={(e) => field('fromName', e.target.value)} /></label>
+        <label>Email<input type="email" required value={form.email} onChange={(e) => field('email', e.target.value)} placeholder="you@company.com" /></label>
+        <label>{form.provider === 'gmail' ? 'Google App Password' : 'SMTP password'}
+          <input type="password" value={form.password} onChange={(e) => field('password', e.target.value)} placeholder={account?.configured ? 'Leave blank to keep current password' : 'Required'} />
+        </label>
+        {custom ? <>
+          <label>SMTP host<input required value={form.host} onChange={(e) => field('host', e.target.value)} placeholder="smtp.example.com" /></label>
+          <label>SMTP port<input type="number" required value={form.port} onChange={(e) => field('port', Number(e.target.value))} /></label>
+          <label className="check"><input type="checkbox" checked={form.secure} onChange={(e) => field('secure', e.target.checked)} />Use TLS/SSL immediately</label>
+        </> : null}
+        {form.provider === 'gmail' ? <p className="cell-sub">Gmail requires 2-Step Verification and an App Password; do not enter your normal Google password.</p> : null}
+        {message ? <p className={message.startsWith('Email connected') ? 'success-line' : 'error'}>{message}</p> : null}
+        <button className="btn-primary" type="submit" disabled={busy}>{busy ? 'Testing connection…' : account?.configured ? 'Test & Update' : 'Test & Connect'}</button>
+        {account?.configured ? <p className="cell-sub">Currently connected: {account.email} via {account.provider}</p> : null}
+      </form>
+      <form className="settings-card" onSubmit={saveWhatsApp}>
+        <h3>WhatsApp Business</h3>
+        <p className="muted">Connect Meta WhatsApp Cloud API. The access token is encrypted and never returned to the browser.</p>
+        <label>Phone Number ID<input required value={waForm.phoneNumberId} onChange={(e) => setWaForm((x) => ({ ...x, phoneNumberId: e.target.value }))} /></label>
+        <label>WhatsApp Business Account ID<input value={waForm.businessAccountId} onChange={(e) => setWaForm((x) => ({ ...x, businessAccountId: e.target.value }))} /></label>
+        <label>Access Token<input type="password" value={waForm.accessToken} onChange={(e) => setWaForm((x) => ({ ...x, accessToken: e.target.value }))} placeholder={wa?.configured ? 'Leave blank to keep current token' : 'Required'} /></label>
+        <label>Graph API Version<input value={waForm.graphVersion} onChange={(e) => setWaForm((x) => ({ ...x, graphVersion: e.target.value }))} /></label>
+        {waMessage ? <p className={waMessage.startsWith('WhatsApp Cloud') ? 'success-line' : 'error'}>{waMessage}</p> : null}
+        <button className="btn-primary" type="submit" disabled={waBusy}>{waBusy ? 'Testing connection…' : wa?.configured ? 'Test & Update WhatsApp' : 'Test & Connect WhatsApp'}</button>
+        {wa?.configured ? <><p className="cell-sub">Connected Phone Number ID: {wa.phoneNumberId}</p><p className="cell-sub">Webhook: /api/webhooks/whatsapp · Verify token: {wa.verifyToken}</p></> : null}
+      </form>
+    </div>
+  )
+}
+
+function FindView({ config, onSent }) {
+  const [state, setState] = useState('TX')
+  const [city, setCity] = useState('')
+  const [postalCode, setPostalCode] = useState('')
+  const [category, setCategory] = useState('all')
+  const [contact, setContact] = useState('reachable')
+  const [hasWebsite, setHasWebsite] = useState('all')
+  const [outreachOnly, setOutreachOnly] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState('')
+  const [placeLabel, setPlaceLabel] = useState('')
+  const [businesses, setBusinesses] = useState([])
+  const [quality, setQuality] = useState(null)
+  const [selected, setSelected] = useState(() => new Set())
+  const [sendChannels, setSendChannels] = useState({ email: true, whatsapp: true })
+  const [dryRun, setDryRun] = useState(true)
+  const [lastSend, setLastSend] = useState(null)
+  const [preview, setPreview] = useState(null)
+  const [analysis, setAnalysis] = useState(null)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [minScore, setMinScore] = useState(0)
+  const [q, setQ] = useState('')
+  const [crm, setCrm] = useState(null)
+
+  const stateCities = useMemo(() => citiesForState(state), [state])
+
+  useEffect(() => {
+    if (!stateCities.includes(city)) setCity(stateCities[0] || '')
+  }, [state, stateCities, city])
+
+  const leads = useMemo(() => {
+    let list = applyLeadFilters(businesses, { category, contact, hasWebsite, outreachOnly })
+    if (minScore > 0) list = list.filter((b) => (b.opportunityScore || 0) >= minScore)
+    const needle = q.trim().toLowerCase()
+    if (needle) {
+      list = list.filter(
+        (b) =>
+          b.name.toLowerCase().includes(needle) ||
+          (b.address || '').toLowerCase().includes(needle) ||
+          (b.email || '').toLowerCase().includes(needle),
+      )
+    }
+    return list
+  }, [businesses, category, contact, hasWebsite, outreachOnly, minScore, q])
+
+  const selectedBusinesses = useMemo(
+    () => leads.filter((b) => selected.has(b.id)),
+    [leads, selected],
+  )
+
+  async function onSearch(e) {
+    e.preventDefault()
+    setError('')
+    setSelected(new Set())
+    setLastSend(null)
+    setPreview(null)
+    if (!state) return setError('Select a state.')
+    if (!city && !postalCode.trim()) return setError('Select a city or ZIP.')
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({ state, city, postalCode: postalCode.trim() })
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 40000)
+      const res = await fetch(`/api/businesses?${params}`, {
+        signal: controller.signal,
+        credentials: 'include',
+      })
+      clearTimeout(timer)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Search failed')
+      setPlaceLabel(data.place?.label || `${city}, ${state}`)
+      setBusinesses(data.businesses || [])
+      setQuality(data.quality || null)
+    } catch (err) {
+      setBusinesses([])
+      setError(err?.name === 'AbortError' ? 'Timed out — try again.' : err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function toggle(id) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function analyzeOne(business) {
+    setAnalyzing(true)
+    setError('')
+    try {
+      const res = await fetch('/api/intelligence/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ business }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Analysis failed')
+      setAnalysis({ business, ...data })
+    } catch (err) {
+      setError(err.message || 'Analysis failed')
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  async function saveCRM(business, patch) {
+    const res = await fetch(`/api/crm/lead/${encodeURIComponent(business.id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(patch),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || 'CRM update failed')
+    setCrm(data.crm)
+  }
+
+  async function openCRM(business) {
+    setError('')
+    try {
+      const res = await fetch(`/api/crm/lead/${encodeURIComponent(business.id)}`, { credentials: 'include' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not load lead')
+      setCrm({ business, ...(data.crm || { id: business.id, status: 'new', notes: '', nextFollowUpAt: null, outcome: null }) })
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function previewOne(business) {
+    const res = await fetch('/api/outreach/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ business }),
+    })
+    const data = await res.json()
+    if (!res.ok) return setError(data.error || 'Preview failed')
+    setPreview({ business, ...data })
+  }
+
+  async function sendSelected() {
+    if (!selectedBusinesses.length) return setError('Select at least one lead.')
+    const channels = []
+    if (sendChannels.email) channels.push('email')
+    if (sendChannels.whatsapp) channels.push('whatsapp')
+    if (!channels.length) return setError('Pick Email and/or WhatsApp.')
+
+    setSending(true)
+    setError('')
+    setLastSend(null)
+    try {
+      const res = await fetch('/api/outreach/send-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          businesses: selectedBusinesses,
+          channels,
+          dryRun,
+          limit: 40,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Send failed')
+      setLastSend(data)
+      onSent?.()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="view find-view">
+      <header className="view-head">
+        <div>
+          <h2>Find leads</h2>
+          <p>
+            Outreach-ready US businesses only (phone or email). Junk map POIs, embassies, and
+            artwork are excluded — unlike the old Italy dump.
+          </p>
+        </div>
+        <div className="api-pills">
+          <span className={config?.emailReady ? 'pill ok' : 'pill warn'}>
+            Email {config?.emailReady ? 'ready' : 'dry-run'}
+          </span>
+          <span className={config?.whatsappReady ? 'pill ok' : 'pill warn'}>
+            WhatsApp {config?.whatsappReady ? 'ready' : 'dry-run'}
+          </span>
+        </div>
+      </header>
+
+      <form className="toolbar" onSubmit={onSearch}>
+        <label>
+          State
+          <select
+            value={state}
+            onChange={(e) => {
+              setState(e.target.value)
+              setBusinesses([])
+              setPlaceLabel('')
+            }}
+          >
+            {US_STATES.map((s) => (
+              <option key={s.code} value={s.code}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          City
+          <select value={city} onChange={(e) => setCity(e.target.value)}>
+            {stateCities.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          ZIP
+          <input
+            value={postalCode}
+            onChange={(e) => setPostalCode(e.target.value)}
+            placeholder="Optional"
+          />
+        </label>
+        <button type="submit" className="btn-primary" disabled={loading}>
+          {loading ? 'Searching…' : 'Search'}
+        </button>
+      </form>
+
+      <div className="filters-bar">
+        <label>
+          Category
+          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            {CATEGORY_FILTERS.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Contact
+          <select value={contact} onChange={(e) => setContact(e.target.value)}>
+            <option value="reachable">Email or phone</option>
+            <option value="email">Has email</option>
+            <option value="phone">Has phone</option>
+            <option value="both">Both</option>
+            <option value="all">Any</option>
+          </select>
+        </label>
+        <label>
+          Website
+          <select value={hasWebsite} onChange={(e) => setHasWebsite(e.target.value)}>
+            <option value="all">Any website</option>
+            <option value="without">No website (best)</option>
+            <option value="with">Has website</option>
+          </select>
+        </label>
+        <label className="check filter-check">
+          <input
+            type="checkbox"
+            checked={outreachOnly}
+            onChange={(e) => setOutreachOnly(e.target.checked)}
+          />
+          Hot leads only (contact + no site)
+        </label>
+        <label>
+          Opportunity
+          <select value={minScore} onChange={(e) => setMinScore(Number(e.target.value))}>
+            <option value={0}>Any score</option>
+            <option value={60}>60+</option>
+            <option value={70}>70+</option>
+            <option value={80}>80+</option>
+            <option value={90}>90+</option>
+          </select>
+        </label>
+        <label className="grow">
+          Filter list
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search name, address, email…"
+          />
+        </label>
+      </div>
+
+      <div className="outreach-bar">
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={sendChannels.email}
+            onChange={(e) => setSendChannels((s) => ({ ...s, email: e.target.checked }))}
+          />
+          Email
+        </label>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={sendChannels.whatsapp}
+            onChange={(e) => setSendChannels((s) => ({ ...s, whatsapp: e.target.checked }))}
+          />
+          WhatsApp
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
+          Dry run
+        </label>
+        <div className="spacer" />
+        <button
+          type="button"
+          className="btn-ghost"
+          onClick={() => setSelected(new Set(leads.map((b) => b.id)))}
+          disabled={!leads.length}
+        >
+          Select all ({leads.length})
+        </button>
+        <button type="button" className="btn-ghost" onClick={() => setSelected(new Set())}>
+          Clear
+        </button>
+        <button
+          type="button"
+          className="btn-accent"
+          onClick={sendSelected}
+          disabled={sending || !selected.size}
+        >
+          {sending ? 'Sending…' : dryRun ? `Preview send (${selected.size})` : `Send (${selected.size})`}
+        </button>
+      </div>
+
+      {placeLabel ? (
+        <p className="meta-line">
+          <strong>{placeLabel}</strong>
+          <span>
+            {businesses.length} with contact
+            {quality?.outreachReady != null ? ` · ${quality.outreachReady} legacy hot leads` : ''}
+            {businesses.length ? ` · ${businesses.filter((b) => (b.opportunityScore || 0) >= 70).length} high opportunity` : ''}
+            {' · '}
+            {leads.length} shown · {selected.size} selected
+          </span>
+        </p>
+      ) : null}
+      {error ? <p className="error">{error}</p> : null}
+      {lastSend ? (
+        <p className="success-line">
+          Logged {lastSend.count} submission{lastSend.count === 1 ? '' : 's'}
+          {dryRun ? ' (dry run)' : ''}. See History → Submissions.
+        </p>
+      ) : null}
+
+      <div className="table-wrap leads-table">
+        <table>
+          <thead>
+              <tr>
+                <th className="check-col" />
+                <th>Business</th>
+                <th>Opportunity</th>
+                <th>Recommended</th>
+                <th>Category</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th />
+              </tr>
+          </thead>
+          <tbody>
+            {leads.length ? (
+              leads.map((b) => (
+                <tr key={b.id} className={selected.has(b.id) ? 'row-on' : ''}>
+                  <td className="check-col">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(b.id)}
+                      onChange={() => toggle(b.id)}
+                    />
+                  </td>
+                  <td>
+                    <strong>{b.name}</strong>
+                    <div className="cell-sub">{b.address}</div>
+                    {b.website ? (
+                      <a href={b.website} target="_blank" rel="noreferrer" className="cell-link">
+                        Website
+                      </a>
+                    ) : null}
+                  </td>
+                  <td>
+                    <strong className="score-value">{b.opportunityScore ?? '—'}/100</strong>
+                    <div className="cell-sub">{b.confidenceScore ?? '—'}% confidence</div>
+                  </td>
+                  <td>
+                    {b.recommendedServices?.[0]?.name || 'Analyze for recommendation'}
+                  </td>
+                  <td>{b.category}</td>
+                  <td>{b.email || '—'}</td>
+                  <td>{b.phone || '—'}</td>
+                  <td>
+                    <button type="button" className="btn-ghost tiny" onClick={() => analyzeOne(b)} disabled={analyzing}>Analyze</button>
+                    <button type="button" className="btn-ghost tiny" onClick={() => openCRM(b)}>CRM</button>
+                    <button type="button" className="btn-ghost tiny" onClick={() => previewOne(b)}>
+                      Preview
+                    </button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={8} className="empty-row">
+                  {loading
+                    ? 'Searching outreach-ready leads…'
+                    : 'Pick a state and city, then search.'}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {analysis ? (
+        <aside className="drawer intelligence-drawer">
+          <div className="drawer-head">
+            <div><h3>{analysis.business.name}</h3><div className="cell-sub">Business Growth Intelligence</div></div>
+            <button type="button" className="btn-ghost tiny" onClick={() => setAnalysis(null)}>Close</button>
+          </div>
+          <div className="score-hero"><strong>{analysis.intelligence.opportunityScore}/100</strong><span>Growth Opportunity</span></div>
+          <h4>Why this lead</h4>
+          <ul className="reason-list">{analysis.intelligence.reasoning.map((x, i) => <li key={i}>{x}</li>)}</ul>
+          <h4>Recommended services</h4>
+          <div className="service-list">{analysis.intelligence.recommendedServices.length ? analysis.intelligence.recommendedServices.map((s) => <div className="service-item" key={s.id}><strong>{s.name}</strong><span>{s.reason}</span></div>) : <p className="muted">No service recommendation can be supported by the available evidence yet.</p>}</div>
+          <h4>Score breakdown</h4>
+          <div className="breakdown">{analysis.intelligence.breakdown.map((x) => <div className="breakdown-row" key={x.label}><span>{x.label}</span><strong>{x.points}/{x.max}</strong></div>)}</div>
+          {analysis.audit?.reachable ? <p className="muted">Website audited successfully. Only observable page signals were used.</p> : analysis.business.website ? <p className="muted">Website audit unavailable: {analysis.audit?.error || 'unreachable'}.</p> : null}
+        </aside>
+      ) : null}
+
+      {crm ? (
+        <aside className="drawer crm-drawer">
+          <div className="drawer-head">
+            <div><h3>{crm.business?.name || 'Lead CRM'}</h3><div className="cell-sub">Pipeline memory</div></div>
+            <button type="button" className="btn-ghost tiny" onClick={() => setCrm(null)}>Close</button>
+          </div>
+          <label>Status
+            <select value={crm.status || 'new'} onChange={(e) => saveCRM(crm.business, { status: e.target.value })}>
+              {['new','contacted','replied','qualified','proposal','won','lost','paused'].map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </label>
+          <label>Next follow-up
+            <input type="datetime-local" value={crm.nextFollowUpAt ? String(crm.nextFollowUpAt).slice(0,16) : ''} onChange={(e) => saveCRM(crm.business, { nextFollowUpAt: e.target.value ? new Date(e.target.value).toISOString() : null })} />
+          </label>
+          <label>Deal value ($)
+            <input type="number" min="0" value={crm.dealValue || ''} placeholder="e.g. 1500" onChange={(e) => setCrm((x) => ({ ...x, dealValue: e.target.value }))} onBlur={() => saveCRM(crm.business, { dealValue: Number(crm.dealValue || 0) })} />
+          </label>
+          <label>Outcome
+            <input value={crm.outcome || ''} placeholder="e.g. interested, no response" onChange={(e) => setCrm((x) => ({ ...x, outcome: e.target.value }))} onBlur={() => saveCRM(crm.business, { outcome: crm.outcome || null })} />
+          </label>
+          <label>Notes
+            <textarea rows="5" value={crm.notes || ''} placeholder="Conversation notes, objections, requirements…" onChange={(e) => setCrm((x) => ({ ...x, notes: e.target.value }))} onBlur={() => saveCRM(crm.business, { notes: crm.notes || '' })} />
+          </label>
+        </aside>
+      ) : null}
+
+      {preview ? (
+        <aside className="drawer">
+          <div className="drawer-head">
+            <h3>{preview.business.name}</h3>
+            <button type="button" className="btn-ghost tiny" onClick={() => setPreview(null)}>
+              Close
+            </button>
+          </div>
+          <h4>Email → {preview.email.to || 'none'}</h4>
+          <p className="subj">{preview.email.subject}</p>
+          <pre>{preview.email.body}</pre>
+          <h4>WhatsApp → {preview.whatsapp.to || 'none'}</h4>
+          <pre>{preview.whatsapp.body}</pre>
+        </aside>
+      ) : null}
+    </div>
+  )
+}
+
+export default function App() {
+  const [user, setUser] = useState(null)
+  const [authChecked, setAuthChecked] = useState(false)
+  const [nav, setNav] = useState('dashboard')
+  const [config, setConfig] = useState(null)
+  const [historyKey, setHistoryKey] = useState(0)
+
+  useEffect(() => {
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.authenticated) setUser({ email: data.email, name: data.name })
+      })
+      .finally(() => setAuthChecked(true))
+  }, [])
+
+  useEffect(() => {
+    if (!user) return
+    fetch('/api/config', { credentials: 'include' })
+      .then((r) => r.json())
+      .then(setConfig)
+      .catch(() => {})
+  }, [user, historyKey])
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+    setUser(null)
+    setConfig(null)
+  }
+
+  if (!authChecked) {
+    return (
+      <div className="boot">
+        <p>Loading workspace…</p>
+      </div>
+    )
+  }
+
+  if (!user) return <LoginScreen onLoggedIn={setUser} />
+
+  return (
+    <div className="app">
+      <aside className="sidebar">
+        <div className="side-brand">
+          <p className="brand-mark">Confidence Arise</p>
+          <h1>Growth Agent</h1>
+          <p className="side-user">{user.name || 'Naeema'}</p>
+        </div>
+        <nav>
+          {NAV.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={nav === item.id ? 'nav-item on' : 'nav-item'}
+              onClick={() => setNav(item.id)}
+            >
+              {item.label}
+              {item.id === 'history' && config?.history ? (
+                <span className="nav-count">{config.history.submissions || 0}</span>
+              ) : null}
+            </button>
+          ))}
+        </nav>
+        <div className="side-foot">
+          <a href={config?.siteUrl || 'https://confidencearise.com'} target="_blank" rel="noreferrer">
+            confidencearise.com
+          </a>
+          <button type="button" className="btn-ghost tiny" onClick={logout}>
+            Sign out
+          </button>
+        </div>
+      </aside>
+
+      <main className="main">
+        {nav === 'dashboard' ? (
+          <DashboardView />
+        ) : nav === 'find' ? (
+          <FindView
+            config={config}
+            onSent={() => setHistoryKey((k) => k + 1)}
+          />
+        ) : nav === 'settings' ? (
+          <SettingsView config={config} onSaved={() => setHistoryKey((k) => k + 1)} />
+        ) : (
+          <HistoryView key={historyKey} />
+        )}
+      </main>
+    </div>
+  )
+}
+ + Number(stats.wonRevenue || 0).toLocaleString()],
+    ['Qualified', stats.qualified], ['Proposals', stats.proposals], ['Won', stats.won],
+    ['Follow-ups due', stats.followUpsDue], ['Reply rate', `${stats.replyRate}%`], ['Win rate', `${stats.winRate}%`],
+  ] : []
+  return <div className="view">
+    <header className="view-head"><div><h2>Growth Command Center</h2><p>Live CRM funnel based only on stored outreach and reply activity.</p></div></header>
+    {error ? <p className="error">{error}</p> : null}
+    <div className="metric-grid">{cards.map(([label,value]) => <div className="metric-card" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
+    {stats ? <div className="settings-card funnel-card"><h3>Pipeline</h3><div className="funnel-row"><span>Contacted</span><strong>{stats.contacted}</strong></div><div className="funnel-row"><span>Replied</span><strong>{stats.replied}</strong></div><div className="funnel-row"><span>Qualified</span><strong>{stats.qualified}</strong></div><div className="funnel-row"><span>Proposal</span><strong>{stats.proposals}</strong></div><div className="funnel-row"><span>Won</span><strong>{stats.won}</strong></div></div> : <p className="muted">Loading metrics…</p>}
+  </div>
+}
+
+function SettingsView({ config, onSaved }) {
+  const account = config?.emailAccount
+  const [form, setForm] = useState({
+    provider: account?.provider || 'gmail',
+    email: account?.email || '',
+    fromName: account?.fromName || 'Confidence Arise',
+    password: '',
+    host: account?.host || '',
+    port: account?.port || 587,
+    secure: Boolean(account?.secure),
+  })
+  const wa = config?.whatsappAccount
+  const [waForm, setWaForm] = useState({
+    phoneNumberId: wa?.phoneNumberId || '',
+    businessAccountId: wa?.businessAccountId || '',
+    graphVersion: wa?.graphVersion || 'v21.0',
+    accessToken: '',
+  })
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+  const [waBusy, setWaBusy] = useState(false)
+  const [waMessage, setWaMessage] = useState('')
+
+  function field(name, value) { setForm((x) => ({ ...x, [name]: value })) }
+
+  async function save(e) {
+    e.preventDefault()
+    setBusy(true)
+    setMessage('')
+    try {
+      const res = await fetch('/api/settings/email', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(form),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not connect email')
+      setForm((x) => ({ ...x, password: '' }))
+      setMessage('Email connected and SMTP login verified.')
+      onSaved?.()
+    } catch (err) {
+      setMessage(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function saveWhatsApp(e) {
+    e.preventDefault()
+    setWaBusy(true); setWaMessage('')
+    try {
+      const res = await fetch('/api/settings/whatsapp', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(waForm) })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not connect WhatsApp')
+      setWaForm((x) => ({ ...x, accessToken: '' }))
+      setWaMessage('WhatsApp Cloud API connected and verified.')
+      onSaved?.()
+    } catch (err) { setWaMessage(err.message) } finally { setWaBusy(false) }
+  }
+
+  const custom = form.provider === 'custom'
+  return (
+    <div className="view settings-view">
+      <header className="view-head"><div><h2>Settings</h2><p>Connect the mailbox used for outreach and follow-ups.</p></div></header>
+      <form className="settings-card" onSubmit={save}>
+        <h3>Email account</h3>
+        <p className="muted">Credentials are stored encrypted on the server and the password is never returned to this browser.</p>
+        <label>Provider
+          <select value={form.provider} onChange={(e) => field('provider', e.target.value)}>
+            <option value="gmail">Gmail / Google Workspace</option>
+            <option value="outlook">Outlook / Microsoft 365</option>
+            <option value="custom">Custom SMTP</option>
+          </select>
+        </label>
+        <label>Sender name<input value={form.fromName} onChange={(e) => field('fromName', e.target.value)} /></label>
+        <label>Email<input type="email" required value={form.email} onChange={(e) => field('email', e.target.value)} placeholder="you@company.com" /></label>
+        <label>{form.provider === 'gmail' ? 'Google App Password' : 'SMTP password'}
+          <input type="password" value={form.password} onChange={(e) => field('password', e.target.value)} placeholder={account?.configured ? 'Leave blank to keep current password' : 'Required'} />
+        </label>
+        {custom ? <>
+          <label>SMTP host<input required value={form.host} onChange={(e) => field('host', e.target.value)} placeholder="smtp.example.com" /></label>
+          <label>SMTP port<input type="number" required value={form.port} onChange={(e) => field('port', Number(e.target.value))} /></label>
+          <label className="check"><input type="checkbox" checked={form.secure} onChange={(e) => field('secure', e.target.checked)} />Use TLS/SSL immediately</label>
+        </> : null}
+        {form.provider === 'gmail' ? <p className="cell-sub">Gmail requires 2-Step Verification and an App Password; do not enter your normal Google password.</p> : null}
+        {message ? <p className={message.startsWith('Email connected') ? 'success-line' : 'error'}>{message}</p> : null}
+        <button className="btn-primary" type="submit" disabled={busy}>{busy ? 'Testing connection…' : account?.configured ? 'Test & Update' : 'Test & Connect'}</button>
+        {account?.configured ? <p className="cell-sub">Currently connected: {account.email} via {account.provider}</p> : null}
+      </form>
+      <form className="settings-card" onSubmit={saveWhatsApp}>
+        <h3>WhatsApp Business</h3>
+        <p className="muted">Connect Meta WhatsApp Cloud API. The access token is encrypted and never returned to the browser.</p>
+        <label>Phone Number ID<input required value={waForm.phoneNumberId} onChange={(e) => setWaForm((x) => ({ ...x, phoneNumberId: e.target.value }))} /></label>
+        <label>WhatsApp Business Account ID<input value={waForm.businessAccountId} onChange={(e) => setWaForm((x) => ({ ...x, businessAccountId: e.target.value }))} /></label>
+        <label>Access Token<input type="password" value={waForm.accessToken} onChange={(e) => setWaForm((x) => ({ ...x, accessToken: e.target.value }))} placeholder={wa?.configured ? 'Leave blank to keep current token' : 'Required'} /></label>
+        <label>Graph API Version<input value={waForm.graphVersion} onChange={(e) => setWaForm((x) => ({ ...x, graphVersion: e.target.value }))} /></label>
+        {waMessage ? <p className={waMessage.startsWith('WhatsApp Cloud') ? 'success-line' : 'error'}>{waMessage}</p> : null}
+        <button className="btn-primary" type="submit" disabled={waBusy}>{waBusy ? 'Testing connection…' : wa?.configured ? 'Test & Update WhatsApp' : 'Test & Connect WhatsApp'}</button>
+        {wa?.configured ? <><p className="cell-sub">Connected Phone Number ID: {wa.phoneNumberId}</p><p className="cell-sub">Webhook: /api/webhooks/whatsapp · Verify token: {wa.verifyToken}</p></> : null}
+      </form>
+    </div>
+  )
+}
+
+function FindView({ config, onSent }) {
+  const [state, setState] = useState('TX')
+  const [city, setCity] = useState('')
+  const [postalCode, setPostalCode] = useState('')
+  const [category, setCategory] = useState('all')
+  const [contact, setContact] = useState('reachable')
+  const [hasWebsite, setHasWebsite] = useState('all')
+  const [outreachOnly, setOutreachOnly] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState('')
+  const [placeLabel, setPlaceLabel] = useState('')
+  const [businesses, setBusinesses] = useState([])
+  const [quality, setQuality] = useState(null)
+  const [selected, setSelected] = useState(() => new Set())
+  const [sendChannels, setSendChannels] = useState({ email: true, whatsapp: true })
+  const [dryRun, setDryRun] = useState(true)
+  const [lastSend, setLastSend] = useState(null)
+  const [preview, setPreview] = useState(null)
+  const [analysis, setAnalysis] = useState(null)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [minScore, setMinScore] = useState(0)
+  const [q, setQ] = useState('')
+  const [crm, setCrm] = useState(null)
+
+  const stateCities = useMemo(() => citiesForState(state), [state])
+
+  useEffect(() => {
+    if (!stateCities.includes(city)) setCity(stateCities[0] || '')
+  }, [state, stateCities, city])
+
+  const leads = useMemo(() => {
+    let list = applyLeadFilters(businesses, { category, contact, hasWebsite, outreachOnly })
+    if (minScore > 0) list = list.filter((b) => (b.opportunityScore || 0) >= minScore)
+    const needle = q.trim().toLowerCase()
+    if (needle) {
+      list = list.filter(
+        (b) =>
+          b.name.toLowerCase().includes(needle) ||
+          (b.address || '').toLowerCase().includes(needle) ||
+          (b.email || '').toLowerCase().includes(needle),
+      )
+    }
+    return list
+  }, [businesses, category, contact, hasWebsite, outreachOnly, minScore, q])
+
+  const selectedBusinesses = useMemo(
+    () => leads.filter((b) => selected.has(b.id)),
+    [leads, selected],
+  )
+
+  async function onSearch(e) {
+    e.preventDefault()
+    setError('')
+    setSelected(new Set())
+    setLastSend(null)
+    setPreview(null)
+    if (!state) return setError('Select a state.')
+    if (!city && !postalCode.trim()) return setError('Select a city or ZIP.')
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({ state, city, postalCode: postalCode.trim() })
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 40000)
+      const res = await fetch(`/api/businesses?${params}`, {
+        signal: controller.signal,
+        credentials: 'include',
+      })
+      clearTimeout(timer)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Search failed')
+      setPlaceLabel(data.place?.label || `${city}, ${state}`)
+      setBusinesses(data.businesses || [])
+      setQuality(data.quality || null)
+    } catch (err) {
+      setBusinesses([])
+      setError(err?.name === 'AbortError' ? 'Timed out — try again.' : err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function toggle(id) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function analyzeOne(business) {
+    setAnalyzing(true)
+    setError('')
+    try {
+      const res = await fetch('/api/intelligence/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ business }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Analysis failed')
+      setAnalysis({ business, ...data })
+    } catch (err) {
+      setError(err.message || 'Analysis failed')
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  async function saveCRM(business, patch) {
+    const res = await fetch(`/api/crm/lead/${encodeURIComponent(business.id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(patch),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || 'CRM update failed')
+    setCrm(data.crm)
+  }
+
+  async function openCRM(business) {
+    setError('')
+    try {
+      const res = await fetch(`/api/crm/lead/${encodeURIComponent(business.id)}`, { credentials: 'include' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not load lead')
+      setCrm({ business, ...(data.crm || { id: business.id, status: 'new', notes: '', nextFollowUpAt: null, outcome: null }) })
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function previewOne(business) {
+    const res = await fetch('/api/outreach/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ business }),
+    })
+    const data = await res.json()
+    if (!res.ok) return setError(data.error || 'Preview failed')
+    setPreview({ business, ...data })
+  }
+
+  async function sendSelected() {
+    if (!selectedBusinesses.length) return setError('Select at least one lead.')
+    const channels = []
+    if (sendChannels.email) channels.push('email')
+    if (sendChannels.whatsapp) channels.push('whatsapp')
+    if (!channels.length) return setError('Pick Email and/or WhatsApp.')
+
+    setSending(true)
+    setError('')
+    setLastSend(null)
+    try {
+      const res = await fetch('/api/outreach/send-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          businesses: selectedBusinesses,
+          channels,
+          dryRun,
+          limit: 40,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Send failed')
+      setLastSend(data)
+      onSent?.()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="view find-view">
+      <header className="view-head">
+        <div>
+          <h2>Find leads</h2>
+          <p>
+            Outreach-ready US businesses only (phone or email). Junk map POIs, embassies, and
+            artwork are excluded — unlike the old Italy dump.
+          </p>
+        </div>
+        <div className="api-pills">
+          <span className={config?.emailReady ? 'pill ok' : 'pill warn'}>
+            Email {config?.emailReady ? 'ready' : 'dry-run'}
+          </span>
+          <span className={config?.whatsappReady ? 'pill ok' : 'pill warn'}>
+            WhatsApp {config?.whatsappReady ? 'ready' : 'dry-run'}
+          </span>
+        </div>
+      </header>
+
+      <form className="toolbar" onSubmit={onSearch}>
+        <label>
+          State
+          <select
+            value={state}
+            onChange={(e) => {
+              setState(e.target.value)
+              setBusinesses([])
+              setPlaceLabel('')
+            }}
+          >
+            {US_STATES.map((s) => (
+              <option key={s.code} value={s.code}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          City
+          <select value={city} onChange={(e) => setCity(e.target.value)}>
+            {stateCities.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          ZIP
+          <input
+            value={postalCode}
+            onChange={(e) => setPostalCode(e.target.value)}
+            placeholder="Optional"
+          />
+        </label>
+        <button type="submit" className="btn-primary" disabled={loading}>
+          {loading ? 'Searching…' : 'Search'}
+        </button>
+      </form>
+
+      <div className="filters-bar">
+        <label>
+          Category
+          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            {CATEGORY_FILTERS.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Contact
+          <select value={contact} onChange={(e) => setContact(e.target.value)}>
+            <option value="reachable">Email or phone</option>
+            <option value="email">Has email</option>
+            <option value="phone">Has phone</option>
+            <option value="both">Both</option>
+            <option value="all">Any</option>
+          </select>
+        </label>
+        <label>
+          Website
+          <select value={hasWebsite} onChange={(e) => setHasWebsite(e.target.value)}>
+            <option value="all">Any website</option>
+            <option value="without">No website (best)</option>
+            <option value="with">Has website</option>
+          </select>
+        </label>
+        <label className="check filter-check">
+          <input
+            type="checkbox"
+            checked={outreachOnly}
+            onChange={(e) => setOutreachOnly(e.target.checked)}
+          />
+          Hot leads only (contact + no site)
+        </label>
+        <label>
+          Opportunity
+          <select value={minScore} onChange={(e) => setMinScore(Number(e.target.value))}>
+            <option value={0}>Any score</option>
+            <option value={60}>60+</option>
+            <option value={70}>70+</option>
+            <option value={80}>80+</option>
+            <option value={90}>90+</option>
+          </select>
+        </label>
+        <label className="grow">
+          Filter list
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search name, address, email…"
+          />
+        </label>
+      </div>
+
+      <div className="outreach-bar">
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={sendChannels.email}
+            onChange={(e) => setSendChannels((s) => ({ ...s, email: e.target.checked }))}
+          />
+          Email
+        </label>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={sendChannels.whatsapp}
+            onChange={(e) => setSendChannels((s) => ({ ...s, whatsapp: e.target.checked }))}
+          />
+          WhatsApp
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
+          Dry run
+        </label>
+        <div className="spacer" />
+        <button
+          type="button"
+          className="btn-ghost"
+          onClick={() => setSelected(new Set(leads.map((b) => b.id)))}
+          disabled={!leads.length}
+        >
+          Select all ({leads.length})
+        </button>
+        <button type="button" className="btn-ghost" onClick={() => setSelected(new Set())}>
+          Clear
+        </button>
+        <button
+          type="button"
+          className="btn-accent"
+          onClick={sendSelected}
+          disabled={sending || !selected.size}
+        >
+          {sending ? 'Sending…' : dryRun ? `Preview send (${selected.size})` : `Send (${selected.size})`}
+        </button>
+      </div>
+
+      {placeLabel ? (
+        <p className="meta-line">
+          <strong>{placeLabel}</strong>
+          <span>
+            {businesses.length} with contact
+            {quality?.outreachReady != null ? ` · ${quality.outreachReady} legacy hot leads` : ''}
+            {businesses.length ? ` · ${businesses.filter((b) => (b.opportunityScore || 0) >= 70).length} high opportunity` : ''}
+            {' · '}
+            {leads.length} shown · {selected.size} selected
+          </span>
+        </p>
+      ) : null}
+      {error ? <p className="error">{error}</p> : null}
+      {lastSend ? (
+        <p className="success-line">
+          Logged {lastSend.count} submission{lastSend.count === 1 ? '' : 's'}
+          {dryRun ? ' (dry run)' : ''}. See History → Submissions.
+        </p>
+      ) : null}
+
+      <div className="table-wrap leads-table">
+        <table>
+          <thead>
+              <tr>
+                <th className="check-col" />
+                <th>Business</th>
+                <th>Opportunity</th>
+                <th>Recommended</th>
+                <th>Category</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th />
+              </tr>
+          </thead>
+          <tbody>
+            {leads.length ? (
+              leads.map((b) => (
+                <tr key={b.id} className={selected.has(b.id) ? 'row-on' : ''}>
+                  <td className="check-col">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(b.id)}
+                      onChange={() => toggle(b.id)}
+                    />
+                  </td>
+                  <td>
+                    <strong>{b.name}</strong>
+                    <div className="cell-sub">{b.address}</div>
+                    {b.website ? (
+                      <a href={b.website} target="_blank" rel="noreferrer" className="cell-link">
+                        Website
+                      </a>
+                    ) : null}
+                  </td>
+                  <td>
+                    <strong className="score-value">{b.opportunityScore ?? '—'}/100</strong>
+                    <div className="cell-sub">{b.confidenceScore ?? '—'}% confidence</div>
+                  </td>
+                  <td>
+                    {b.recommendedServices?.[0]?.name || 'Analyze for recommendation'}
+                  </td>
+                  <td>{b.category}</td>
+                  <td>{b.email || '—'}</td>
+                  <td>{b.phone || '—'}</td>
+                  <td>
+                    <button type="button" className="btn-ghost tiny" onClick={() => analyzeOne(b)} disabled={analyzing}>Analyze</button>
+                    <button type="button" className="btn-ghost tiny" onClick={() => openCRM(b)}>CRM</button>
+                    <button type="button" className="btn-ghost tiny" onClick={() => previewOne(b)}>
+                      Preview
+                    </button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={8} className="empty-row">
+                  {loading
+                    ? 'Searching outreach-ready leads…'
+                    : 'Pick a state and city, then search.'}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {analysis ? (
+        <aside className="drawer intelligence-drawer">
+          <div className="drawer-head">
+            <div><h3>{analysis.business.name}</h3><div className="cell-sub">Business Growth Intelligence</div></div>
+            <button type="button" className="btn-ghost tiny" onClick={() => setAnalysis(null)}>Close</button>
+          </div>
+          <div className="score-hero"><strong>{analysis.intelligence.opportunityScore}/100</strong><span>Growth Opportunity</span></div>
+          <h4>Why this lead</h4>
+          <ul className="reason-list">{analysis.intelligence.reasoning.map((x, i) => <li key={i}>{x}</li>)}</ul>
+          <h4>Recommended services</h4>
+          <div className="service-list">{analysis.intelligence.recommendedServices.length ? analysis.intelligence.recommendedServices.map((s) => <div className="service-item" key={s.id}><strong>{s.name}</strong><span>{s.reason}</span></div>) : <p className="muted">No service recommendation can be supported by the available evidence yet.</p>}</div>
+          <h4>Score breakdown</h4>
+          <div className="breakdown">{analysis.intelligence.breakdown.map((x) => <div className="breakdown-row" key={x.label}><span>{x.label}</span><strong>{x.points}/{x.max}</strong></div>)}</div>
+          {analysis.audit?.reachable ? <p className="muted">Website audited successfully. Only observable page signals were used.</p> : analysis.business.website ? <p className="muted">Website audit unavailable: {analysis.audit?.error || 'unreachable'}.</p> : null}
+        </aside>
+      ) : null}
+
+      {crm ? (
+        <aside className="drawer crm-drawer">
+          <div className="drawer-head">
+            <div><h3>{crm.business?.name || 'Lead CRM'}</h3><div className="cell-sub">Pipeline memory</div></div>
+            <button type="button" className="btn-ghost tiny" onClick={() => setCrm(null)}>Close</button>
+          </div>
+          <label>Status
+            <select value={crm.status || 'new'} onChange={(e) => saveCRM(crm.business, { status: e.target.value })}>
+              {['new','contacted','replied','qualified','proposal','won','lost','paused'].map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </label>
+          <label>Next follow-up
+            <input type="datetime-local" value={crm.nextFollowUpAt ? String(crm.nextFollowUpAt).slice(0,16) : ''} onChange={(e) => saveCRM(crm.business, { nextFollowUpAt: e.target.value ? new Date(e.target.value).toISOString() : null })} />
+          </label>
+          <label>Deal value ($)
+            <input type="number" min="0" value={crm.dealValue || ''} placeholder="e.g. 1500" onChange={(e) => setCrm((x) => ({ ...x, dealValue: e.target.value }))} onBlur={() => saveCRM(crm.business, { dealValue: Number(crm.dealValue || 0) })} />
+          </label>
+          <label>Outcome
+            <input value={crm.outcome || ''} placeholder="e.g. interested, no response" onChange={(e) => setCrm((x) => ({ ...x, outcome: e.target.value }))} onBlur={() => saveCRM(crm.business, { outcome: crm.outcome || null })} />
+          </label>
+          <label>Notes
+            <textarea rows="5" value={crm.notes || ''} placeholder="Conversation notes, objections, requirements…" onChange={(e) => setCrm((x) => ({ ...x, notes: e.target.value }))} onBlur={() => saveCRM(crm.business, { notes: crm.notes || '' })} />
+          </label>
+        </aside>
+      ) : null}
+
+      {preview ? (
+        <aside className="drawer">
+          <div className="drawer-head">
+            <h3>{preview.business.name}</h3>
+            <button type="button" className="btn-ghost tiny" onClick={() => setPreview(null)}>
+              Close
+            </button>
+          </div>
+          <h4>Email → {preview.email.to || 'none'}</h4>
+          <p className="subj">{preview.email.subject}</p>
+          <pre>{preview.email.body}</pre>
+          <h4>WhatsApp → {preview.whatsapp.to || 'none'}</h4>
+          <pre>{preview.whatsapp.body}</pre>
+        </aside>
+      ) : null}
+    </div>
+  )
+}
+
+export default function App() {
+  const [user, setUser] = useState(null)
+  const [authChecked, setAuthChecked] = useState(false)
+  const [nav, setNav] = useState('dashboard')
+  const [config, setConfig] = useState(null)
+  const [historyKey, setHistoryKey] = useState(0)
+
+  useEffect(() => {
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.authenticated) setUser({ email: data.email, name: data.name })
+      })
+      .finally(() => setAuthChecked(true))
+  }, [])
+
+  useEffect(() => {
+    if (!user) return
+    fetch('/api/config', { credentials: 'include' })
+      .then((r) => r.json())
+      .then(setConfig)
+      .catch(() => {})
+  }, [user, historyKey])
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+    setUser(null)
+    setConfig(null)
+  }
+
+  if (!authChecked) {
+    return (
+      <div className="boot">
+        <p>Loading workspace…</p>
+      </div>
+    )
+  }
+
+  if (!user) return <LoginScreen onLoggedIn={setUser} />
+
+  return (
+    <div className="app">
+      <aside className="sidebar">
+        <div className="side-brand">
+          <p className="brand-mark">Confidence Arise</p>
+          <h1>Growth Agent</h1>
+          <p className="side-user">{user.name || 'Naeema'}</p>
+        </div>
+        <nav>
+          {NAV.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={nav === item.id ? 'nav-item on' : 'nav-item'}
+              onClick={() => setNav(item.id)}
+            >
+              {item.label}
+              {item.id === 'history' && config?.history ? (
+                <span className="nav-count">{config.history.submissions || 0}</span>
+              ) : null}
+            </button>
+          ))}
+        </nav>
+        <div className="side-foot">
+          <a href={config?.siteUrl || 'https://confidencearise.com'} target="_blank" rel="noreferrer">
+            confidencearise.com
+          </a>
+          <button type="button" className="btn-ghost tiny" onClick={logout}>
+            Sign out
+          </button>
+        </div>
+      </aside>
+
+      <main className="main">
+        {nav === 'dashboard' ? (
+          <DashboardView />
+        ) : nav === 'find' ? (
+          <FindView
+            config={config}
+            onSent={() => setHistoryKey((k) => k + 1)}
+          />
+        ) : nav === 'settings' ? (
+          <SettingsView config={config} onSaved={() => setHistoryKey((k) => k + 1)} />
+        ) : (
+          <HistoryView key={historyKey} />
+        )}
+      </main>
+    </div>
+  )
+}
+ + Number(stats.pipelineValue || 0).toLocaleString()],
+    ['Won revenue', ' ['Proposals', stats.proposals], ['Won', stats.won],
+    ['Follow-ups due', stats.followUpsDue], ['Reply rate', `${stats.replyRate}%`], ['Win rate', `${stats.winRate}%`],
+  ] : []
+  return <div className="view">
+    <header className="view-head"><div><h2>Growth Command Center</h2><p>Live CRM funnel based only on stored outreach and reply activity.</p></div></header>
+    {error ? <p className="error">{error}</p> : null}
+    <div className="metric-grid">{cards.map(([label,value]) => <div className="metric-card" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
+    {stats ? <div className="settings-card funnel-card"><h3>Pipeline</h3><div className="funnel-row"><span>Contacted</span><strong>{stats.contacted}</strong></div><div className="funnel-row"><span>Replied</span><strong>{stats.replied}</strong></div><div className="funnel-row"><span>Qualified</span><strong>{stats.qualified}</strong></div><div className="funnel-row"><span>Proposal</span><strong>{stats.proposals}</strong></div><div className="funnel-row"><span>Won</span><strong>{stats.won}</strong></div></div> : <p className="muted">Loading metrics…</p>}
+  </div>
+}
+
+function SettingsView({ config, onSaved }) {
+  const account = config?.emailAccount
+  const [form, setForm] = useState({
+    provider: account?.provider || 'gmail',
+    email: account?.email || '',
+    fromName: account?.fromName || 'Confidence Arise',
+    password: '',
+    host: account?.host || '',
+    port: account?.port || 587,
+    secure: Boolean(account?.secure),
+  })
+  const wa = config?.whatsappAccount
+  const [waForm, setWaForm] = useState({
+    phoneNumberId: wa?.phoneNumberId || '',
+    businessAccountId: wa?.businessAccountId || '',
+    graphVersion: wa?.graphVersion || 'v21.0',
+    accessToken: '',
+  })
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+  const [waBusy, setWaBusy] = useState(false)
+  const [waMessage, setWaMessage] = useState('')
+
+  function field(name, value) { setForm((x) => ({ ...x, [name]: value })) }
+
+  async function save(e) {
+    e.preventDefault()
+    setBusy(true)
+    setMessage('')
+    try {
+      const res = await fetch('/api/settings/email', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(form),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not connect email')
+      setForm((x) => ({ ...x, password: '' }))
+      setMessage('Email connected and SMTP login verified.')
+      onSaved?.()
+    } catch (err) {
+      setMessage(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function saveWhatsApp(e) {
+    e.preventDefault()
+    setWaBusy(true); setWaMessage('')
+    try {
+      const res = await fetch('/api/settings/whatsapp', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(waForm) })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not connect WhatsApp')
+      setWaForm((x) => ({ ...x, accessToken: '' }))
+      setWaMessage('WhatsApp Cloud API connected and verified.')
+      onSaved?.()
+    } catch (err) { setWaMessage(err.message) } finally { setWaBusy(false) }
+  }
+
+  const custom = form.provider === 'custom'
+  return (
+    <div className="view settings-view">
+      <header className="view-head"><div><h2>Settings</h2><p>Connect the mailbox used for outreach and follow-ups.</p></div></header>
+      <form className="settings-card" onSubmit={save}>
+        <h3>Email account</h3>
+        <p className="muted">Credentials are stored encrypted on the server and the password is never returned to this browser.</p>
+        <label>Provider
+          <select value={form.provider} onChange={(e) => field('provider', e.target.value)}>
+            <option value="gmail">Gmail / Google Workspace</option>
+            <option value="outlook">Outlook / Microsoft 365</option>
+            <option value="custom">Custom SMTP</option>
+          </select>
+        </label>
+        <label>Sender name<input value={form.fromName} onChange={(e) => field('fromName', e.target.value)} /></label>
+        <label>Email<input type="email" required value={form.email} onChange={(e) => field('email', e.target.value)} placeholder="you@company.com" /></label>
+        <label>{form.provider === 'gmail' ? 'Google App Password' : 'SMTP password'}
+          <input type="password" value={form.password} onChange={(e) => field('password', e.target.value)} placeholder={account?.configured ? 'Leave blank to keep current password' : 'Required'} />
+        </label>
+        {custom ? <>
+          <label>SMTP host<input required value={form.host} onChange={(e) => field('host', e.target.value)} placeholder="smtp.example.com" /></label>
+          <label>SMTP port<input type="number" required value={form.port} onChange={(e) => field('port', Number(e.target.value))} /></label>
+          <label className="check"><input type="checkbox" checked={form.secure} onChange={(e) => field('secure', e.target.checked)} />Use TLS/SSL immediately</label>
+        </> : null}
+        {form.provider === 'gmail' ? <p className="cell-sub">Gmail requires 2-Step Verification and an App Password; do not enter your normal Google password.</p> : null}
+        {message ? <p className={message.startsWith('Email connected') ? 'success-line' : 'error'}>{message}</p> : null}
+        <button className="btn-primary" type="submit" disabled={busy}>{busy ? 'Testing connection…' : account?.configured ? 'Test & Update' : 'Test & Connect'}</button>
+        {account?.configured ? <p className="cell-sub">Currently connected: {account.email} via {account.provider}</p> : null}
+      </form>
+      <form className="settings-card" onSubmit={saveWhatsApp}>
+        <h3>WhatsApp Business</h3>
+        <p className="muted">Connect Meta WhatsApp Cloud API. The access token is encrypted and never returned to the browser.</p>
+        <label>Phone Number ID<input required value={waForm.phoneNumberId} onChange={(e) => setWaForm((x) => ({ ...x, phoneNumberId: e.target.value }))} /></label>
+        <label>WhatsApp Business Account ID<input value={waForm.businessAccountId} onChange={(e) => setWaForm((x) => ({ ...x, businessAccountId: e.target.value }))} /></label>
+        <label>Access Token<input type="password" value={waForm.accessToken} onChange={(e) => setWaForm((x) => ({ ...x, accessToken: e.target.value }))} placeholder={wa?.configured ? 'Leave blank to keep current token' : 'Required'} /></label>
+        <label>Graph API Version<input value={waForm.graphVersion} onChange={(e) => setWaForm((x) => ({ ...x, graphVersion: e.target.value }))} /></label>
+        {waMessage ? <p className={waMessage.startsWith('WhatsApp Cloud') ? 'success-line' : 'error'}>{waMessage}</p> : null}
+        <button className="btn-primary" type="submit" disabled={waBusy}>{waBusy ? 'Testing connection…' : wa?.configured ? 'Test & Update WhatsApp' : 'Test & Connect WhatsApp'}</button>
+        {wa?.configured ? <><p className="cell-sub">Connected Phone Number ID: {wa.phoneNumberId}</p><p className="cell-sub">Webhook: /api/webhooks/whatsapp · Verify token: {wa.verifyToken}</p></> : null}
+      </form>
+    </div>
+  )
+}
+
+function FindView({ config, onSent }) {
+  const [state, setState] = useState('TX')
+  const [city, setCity] = useState('')
+  const [postalCode, setPostalCode] = useState('')
+  const [category, setCategory] = useState('all')
+  const [contact, setContact] = useState('reachable')
+  const [hasWebsite, setHasWebsite] = useState('all')
+  const [outreachOnly, setOutreachOnly] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState('')
+  const [placeLabel, setPlaceLabel] = useState('')
+  const [businesses, setBusinesses] = useState([])
+  const [quality, setQuality] = useState(null)
+  const [selected, setSelected] = useState(() => new Set())
+  const [sendChannels, setSendChannels] = useState({ email: true, whatsapp: true })
+  const [dryRun, setDryRun] = useState(true)
+  const [lastSend, setLastSend] = useState(null)
+  const [preview, setPreview] = useState(null)
+  const [analysis, setAnalysis] = useState(null)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [minScore, setMinScore] = useState(0)
+  const [q, setQ] = useState('')
+  const [crm, setCrm] = useState(null)
+
+  const stateCities = useMemo(() => citiesForState(state), [state])
+
+  useEffect(() => {
+    if (!stateCities.includes(city)) setCity(stateCities[0] || '')
+  }, [state, stateCities, city])
+
+  const leads = useMemo(() => {
+    let list = applyLeadFilters(businesses, { category, contact, hasWebsite, outreachOnly })
+    if (minScore > 0) list = list.filter((b) => (b.opportunityScore || 0) >= minScore)
+    const needle = q.trim().toLowerCase()
+    if (needle) {
+      list = list.filter(
+        (b) =>
+          b.name.toLowerCase().includes(needle) ||
+          (b.address || '').toLowerCase().includes(needle) ||
+          (b.email || '').toLowerCase().includes(needle),
+      )
+    }
+    return list
+  }, [businesses, category, contact, hasWebsite, outreachOnly, minScore, q])
+
+  const selectedBusinesses = useMemo(
+    () => leads.filter((b) => selected.has(b.id)),
+    [leads, selected],
+  )
+
+  async function onSearch(e) {
+    e.preventDefault()
+    setError('')
+    setSelected(new Set())
+    setLastSend(null)
+    setPreview(null)
+    if (!state) return setError('Select a state.')
+    if (!city && !postalCode.trim()) return setError('Select a city or ZIP.')
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({ state, city, postalCode: postalCode.trim() })
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 40000)
+      const res = await fetch(`/api/businesses?${params}`, {
+        signal: controller.signal,
+        credentials: 'include',
+      })
+      clearTimeout(timer)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Search failed')
+      setPlaceLabel(data.place?.label || `${city}, ${state}`)
+      setBusinesses(data.businesses || [])
+      setQuality(data.quality || null)
+    } catch (err) {
+      setBusinesses([])
+      setError(err?.name === 'AbortError' ? 'Timed out — try again.' : err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function toggle(id) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function analyzeOne(business) {
+    setAnalyzing(true)
+    setError('')
+    try {
+      const res = await fetch('/api/intelligence/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ business }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Analysis failed')
+      setAnalysis({ business, ...data })
+    } catch (err) {
+      setError(err.message || 'Analysis failed')
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  async function saveCRM(business, patch) {
+    const res = await fetch(`/api/crm/lead/${encodeURIComponent(business.id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(patch),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || 'CRM update failed')
+    setCrm(data.crm)
+  }
+
+  async function openCRM(business) {
+    setError('')
+    try {
+      const res = await fetch(`/api/crm/lead/${encodeURIComponent(business.id)}`, { credentials: 'include' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not load lead')
+      setCrm({ business, ...(data.crm || { id: business.id, status: 'new', notes: '', nextFollowUpAt: null, outcome: null }) })
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function previewOne(business) {
+    const res = await fetch('/api/outreach/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ business }),
+    })
+    const data = await res.json()
+    if (!res.ok) return setError(data.error || 'Preview failed')
+    setPreview({ business, ...data })
+  }
+
+  async function sendSelected() {
+    if (!selectedBusinesses.length) return setError('Select at least one lead.')
+    const channels = []
+    if (sendChannels.email) channels.push('email')
+    if (sendChannels.whatsapp) channels.push('whatsapp')
+    if (!channels.length) return setError('Pick Email and/or WhatsApp.')
+
+    setSending(true)
+    setError('')
+    setLastSend(null)
+    try {
+      const res = await fetch('/api/outreach/send-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          businesses: selectedBusinesses,
+          channels,
+          dryRun,
+          limit: 40,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Send failed')
+      setLastSend(data)
+      onSent?.()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="view find-view">
+      <header className="view-head">
+        <div>
+          <h2>Find leads</h2>
+          <p>
+            Outreach-ready US businesses only (phone or email). Junk map POIs, embassies, and
+            artwork are excluded — unlike the old Italy dump.
+          </p>
+        </div>
+        <div className="api-pills">
+          <span className={config?.emailReady ? 'pill ok' : 'pill warn'}>
+            Email {config?.emailReady ? 'ready' : 'dry-run'}
+          </span>
+          <span className={config?.whatsappReady ? 'pill ok' : 'pill warn'}>
+            WhatsApp {config?.whatsappReady ? 'ready' : 'dry-run'}
+          </span>
+        </div>
+      </header>
+
+      <form className="toolbar" onSubmit={onSearch}>
+        <label>
+          State
+          <select
+            value={state}
+            onChange={(e) => {
+              setState(e.target.value)
+              setBusinesses([])
+              setPlaceLabel('')
+            }}
+          >
+            {US_STATES.map((s) => (
+              <option key={s.code} value={s.code}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          City
+          <select value={city} onChange={(e) => setCity(e.target.value)}>
+            {stateCities.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          ZIP
+          <input
+            value={postalCode}
+            onChange={(e) => setPostalCode(e.target.value)}
+            placeholder="Optional"
+          />
+        </label>
+        <button type="submit" className="btn-primary" disabled={loading}>
+          {loading ? 'Searching…' : 'Search'}
+        </button>
+      </form>
+
+      <div className="filters-bar">
+        <label>
+          Category
+          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            {CATEGORY_FILTERS.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Contact
+          <select value={contact} onChange={(e) => setContact(e.target.value)}>
+            <option value="reachable">Email or phone</option>
+            <option value="email">Has email</option>
+            <option value="phone">Has phone</option>
+            <option value="both">Both</option>
+            <option value="all">Any</option>
+          </select>
+        </label>
+        <label>
+          Website
+          <select value={hasWebsite} onChange={(e) => setHasWebsite(e.target.value)}>
+            <option value="all">Any website</option>
+            <option value="without">No website (best)</option>
+            <option value="with">Has website</option>
+          </select>
+        </label>
+        <label className="check filter-check">
+          <input
+            type="checkbox"
+            checked={outreachOnly}
+            onChange={(e) => setOutreachOnly(e.target.checked)}
+          />
+          Hot leads only (contact + no site)
+        </label>
+        <label>
+          Opportunity
+          <select value={minScore} onChange={(e) => setMinScore(Number(e.target.value))}>
+            <option value={0}>Any score</option>
+            <option value={60}>60+</option>
+            <option value={70}>70+</option>
+            <option value={80}>80+</option>
+            <option value={90}>90+</option>
+          </select>
+        </label>
+        <label className="grow">
+          Filter list
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search name, address, email…"
+          />
+        </label>
+      </div>
+
+      <div className="outreach-bar">
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={sendChannels.email}
+            onChange={(e) => setSendChannels((s) => ({ ...s, email: e.target.checked }))}
+          />
+          Email
+        </label>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={sendChannels.whatsapp}
+            onChange={(e) => setSendChannels((s) => ({ ...s, whatsapp: e.target.checked }))}
+          />
+          WhatsApp
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
+          Dry run
+        </label>
+        <div className="spacer" />
+        <button
+          type="button"
+          className="btn-ghost"
+          onClick={() => setSelected(new Set(leads.map((b) => b.id)))}
+          disabled={!leads.length}
+        >
+          Select all ({leads.length})
+        </button>
+        <button type="button" className="btn-ghost" onClick={() => setSelected(new Set())}>
+          Clear
+        </button>
+        <button
+          type="button"
+          className="btn-accent"
+          onClick={sendSelected}
+          disabled={sending || !selected.size}
+        >
+          {sending ? 'Sending…' : dryRun ? `Preview send (${selected.size})` : `Send (${selected.size})`}
+        </button>
+      </div>
+
+      {placeLabel ? (
+        <p className="meta-line">
+          <strong>{placeLabel}</strong>
+          <span>
+            {businesses.length} with contact
+            {quality?.outreachReady != null ? ` · ${quality.outreachReady} legacy hot leads` : ''}
+            {businesses.length ? ` · ${businesses.filter((b) => (b.opportunityScore || 0) >= 70).length} high opportunity` : ''}
+            {' · '}
+            {leads.length} shown · {selected.size} selected
+          </span>
+        </p>
+      ) : null}
+      {error ? <p className="error">{error}</p> : null}
+      {lastSend ? (
+        <p className="success-line">
+          Logged {lastSend.count} submission{lastSend.count === 1 ? '' : 's'}
+          {dryRun ? ' (dry run)' : ''}. See History → Submissions.
+        </p>
+      ) : null}
+
+      <div className="table-wrap leads-table">
+        <table>
+          <thead>
+              <tr>
+                <th className="check-col" />
+                <th>Business</th>
+                <th>Opportunity</th>
+                <th>Recommended</th>
+                <th>Category</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th />
+              </tr>
+          </thead>
+          <tbody>
+            {leads.length ? (
+              leads.map((b) => (
+                <tr key={b.id} className={selected.has(b.id) ? 'row-on' : ''}>
+                  <td className="check-col">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(b.id)}
+                      onChange={() => toggle(b.id)}
+                    />
+                  </td>
+                  <td>
+                    <strong>{b.name}</strong>
+                    <div className="cell-sub">{b.address}</div>
+                    {b.website ? (
+                      <a href={b.website} target="_blank" rel="noreferrer" className="cell-link">
+                        Website
+                      </a>
+                    ) : null}
+                  </td>
+                  <td>
+                    <strong className="score-value">{b.opportunityScore ?? '—'}/100</strong>
+                    <div className="cell-sub">{b.confidenceScore ?? '—'}% confidence</div>
+                  </td>
+                  <td>
+                    {b.recommendedServices?.[0]?.name || 'Analyze for recommendation'}
+                  </td>
+                  <td>{b.category}</td>
+                  <td>{b.email || '—'}</td>
+                  <td>{b.phone || '—'}</td>
+                  <td>
+                    <button type="button" className="btn-ghost tiny" onClick={() => analyzeOne(b)} disabled={analyzing}>Analyze</button>
+                    <button type="button" className="btn-ghost tiny" onClick={() => openCRM(b)}>CRM</button>
+                    <button type="button" className="btn-ghost tiny" onClick={() => previewOne(b)}>
+                      Preview
+                    </button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={8} className="empty-row">
+                  {loading
+                    ? 'Searching outreach-ready leads…'
+                    : 'Pick a state and city, then search.'}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {analysis ? (
+        <aside className="drawer intelligence-drawer">
+          <div className="drawer-head">
+            <div><h3>{analysis.business.name}</h3><div className="cell-sub">Business Growth Intelligence</div></div>
+            <button type="button" className="btn-ghost tiny" onClick={() => setAnalysis(null)}>Close</button>
+          </div>
+          <div className="score-hero"><strong>{analysis.intelligence.opportunityScore}/100</strong><span>Growth Opportunity</span></div>
+          <h4>Why this lead</h4>
+          <ul className="reason-list">{analysis.intelligence.reasoning.map((x, i) => <li key={i}>{x}</li>)}</ul>
+          <h4>Recommended services</h4>
+          <div className="service-list">{analysis.intelligence.recommendedServices.length ? analysis.intelligence.recommendedServices.map((s) => <div className="service-item" key={s.id}><strong>{s.name}</strong><span>{s.reason}</span></div>) : <p className="muted">No service recommendation can be supported by the available evidence yet.</p>}</div>
+          <h4>Score breakdown</h4>
+          <div className="breakdown">{analysis.intelligence.breakdown.map((x) => <div className="breakdown-row" key={x.label}><span>{x.label}</span><strong>{x.points}/{x.max}</strong></div>)}</div>
+          {analysis.audit?.reachable ? <p className="muted">Website audited successfully. Only observable page signals were used.</p> : analysis.business.website ? <p className="muted">Website audit unavailable: {analysis.audit?.error || 'unreachable'}.</p> : null}
+        </aside>
+      ) : null}
+
+      {crm ? (
+        <aside className="drawer crm-drawer">
+          <div className="drawer-head">
+            <div><h3>{crm.business?.name || 'Lead CRM'}</h3><div className="cell-sub">Pipeline memory</div></div>
+            <button type="button" className="btn-ghost tiny" onClick={() => setCrm(null)}>Close</button>
+          </div>
+          <label>Status
+            <select value={crm.status || 'new'} onChange={(e) => saveCRM(crm.business, { status: e.target.value })}>
+              {['new','contacted','replied','qualified','proposal','won','lost','paused'].map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </label>
+          <label>Next follow-up
+            <input type="datetime-local" value={crm.nextFollowUpAt ? String(crm.nextFollowUpAt).slice(0,16) : ''} onChange={(e) => saveCRM(crm.business, { nextFollowUpAt: e.target.value ? new Date(e.target.value).toISOString() : null })} />
+          </label>
+          <label>Deal value ($)
+            <input type="number" min="0" value={crm.dealValue || ''} placeholder="e.g. 1500" onChange={(e) => setCrm((x) => ({ ...x, dealValue: e.target.value }))} onBlur={() => saveCRM(crm.business, { dealValue: Number(crm.dealValue || 0) })} />
+          </label>
+          <label>Outcome
+            <input value={crm.outcome || ''} placeholder="e.g. interested, no response" onChange={(e) => setCrm((x) => ({ ...x, outcome: e.target.value }))} onBlur={() => saveCRM(crm.business, { outcome: crm.outcome || null })} />
+          </label>
+          <label>Notes
+            <textarea rows="5" value={crm.notes || ''} placeholder="Conversation notes, objections, requirements…" onChange={(e) => setCrm((x) => ({ ...x, notes: e.target.value }))} onBlur={() => saveCRM(crm.business, { notes: crm.notes || '' })} />
+          </label>
+        </aside>
+      ) : null}
+
+      {preview ? (
+        <aside className="drawer">
+          <div className="drawer-head">
+            <h3>{preview.business.name}</h3>
+            <button type="button" className="btn-ghost tiny" onClick={() => setPreview(null)}>
+              Close
+            </button>
+          </div>
+          <h4>Email → {preview.email.to || 'none'}</h4>
+          <p className="subj">{preview.email.subject}</p>
+          <pre>{preview.email.body}</pre>
+          <h4>WhatsApp → {preview.whatsapp.to || 'none'}</h4>
+          <pre>{preview.whatsapp.body}</pre>
+        </aside>
+      ) : null}
+    </div>
+  )
+}
+
+export default function App() {
+  const [user, setUser] = useState(null)
+  const [authChecked, setAuthChecked] = useState(false)
+  const [nav, setNav] = useState('dashboard')
+  const [config, setConfig] = useState(null)
+  const [historyKey, setHistoryKey] = useState(0)
+
+  useEffect(() => {
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.authenticated) setUser({ email: data.email, name: data.name })
+      })
+      .finally(() => setAuthChecked(true))
+  }, [])
+
+  useEffect(() => {
+    if (!user) return
+    fetch('/api/config', { credentials: 'include' })
+      .then((r) => r.json())
+      .then(setConfig)
+      .catch(() => {})
+  }, [user, historyKey])
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+    setUser(null)
+    setConfig(null)
+  }
+
+  if (!authChecked) {
+    return (
+      <div className="boot">
+        <p>Loading workspace…</p>
+      </div>
+    )
+  }
+
+  if (!user) return <LoginScreen onLoggedIn={setUser} />
+
+  return (
+    <div className="app">
+      <aside className="sidebar">
+        <div className="side-brand">
+          <p className="brand-mark">Confidence Arise</p>
+          <h1>Growth Agent</h1>
+          <p className="side-user">{user.name || 'Naeema'}</p>
+        </div>
+        <nav>
+          {NAV.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={nav === item.id ? 'nav-item on' : 'nav-item'}
+              onClick={() => setNav(item.id)}
+            >
+              {item.label}
+              {item.id === 'history' && config?.history ? (
+                <span className="nav-count">{config.history.submissions || 0}</span>
+              ) : null}
+            </button>
+          ))}
+        </nav>
+        <div className="side-foot">
+          <a href={config?.siteUrl || 'https://confidencearise.com'} target="_blank" rel="noreferrer">
+            confidencearise.com
+          </a>
+          <button type="button" className="btn-ghost tiny" onClick={logout}>
+            Sign out
+          </button>
+        </div>
+      </aside>
+
+      <main className="main">
+        {nav === 'dashboard' ? (
+          <DashboardView />
+        ) : nav === 'find' ? (
+          <FindView
+            config={config}
+            onSent={() => setHistoryKey((k) => k + 1)}
+          />
+        ) : nav === 'settings' ? (
+          <SettingsView config={config} onSaved={() => setHistoryKey((k) => k + 1)} />
+        ) : (
+          <HistoryView key={historyKey} />
+        )}
+      </main>
+    </div>
+  )
+}
+ + Number(stats.pipelineValue || 0).toLocaleString()], ['Won revenue', '
+    ['Qualified', stats.qualified], ['Proposals', stats.proposals], ['Won', stats.won],
+    ['Follow-ups due', stats.followUpsDue], ['Reply rate', `${stats.replyRate}%`], ['Win rate', `${stats.winRate}%`],
+  ] : []
+  return <div className="view">
+    <header className="view-head"><div><h2>Growth Command Center</h2><p>Live CRM funnel based only on stored outreach and reply activity.</p></div></header>
+    {error ? <p className="error">{error}</p> : null}
+    <div className="metric-grid">{cards.map(([label,value]) => <div className="metric-card" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
+    {stats ? <div className="settings-card funnel-card"><h3>Pipeline</h3><div className="funnel-row"><span>Contacted</span><strong>{stats.contacted}</strong></div><div className="funnel-row"><span>Replied</span><strong>{stats.replied}</strong></div><div className="funnel-row"><span>Qualified</span><strong>{stats.qualified}</strong></div><div className="funnel-row"><span>Proposal</span><strong>{stats.proposals}</strong></div><div className="funnel-row"><span>Won</span><strong>{stats.won}</strong></div></div> : <p className="muted">Loading metrics…</p>}
+  </div>
+}
+
+function SettingsView({ config, onSaved }) {
+  const account = config?.emailAccount
+  const [form, setForm] = useState({
+    provider: account?.provider || 'gmail',
+    email: account?.email || '',
+    fromName: account?.fromName || 'Confidence Arise',
+    password: '',
+    host: account?.host || '',
+    port: account?.port || 587,
+    secure: Boolean(account?.secure),
+  })
+  const wa = config?.whatsappAccount
+  const [waForm, setWaForm] = useState({
+    phoneNumberId: wa?.phoneNumberId || '',
+    businessAccountId: wa?.businessAccountId || '',
+    graphVersion: wa?.graphVersion || 'v21.0',
+    accessToken: '',
+  })
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+  const [waBusy, setWaBusy] = useState(false)
+  const [waMessage, setWaMessage] = useState('')
+
+  function field(name, value) { setForm((x) => ({ ...x, [name]: value })) }
+
+  async function save(e) {
+    e.preventDefault()
+    setBusy(true)
+    setMessage('')
+    try {
+      const res = await fetch('/api/settings/email', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(form),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not connect email')
+      setForm((x) => ({ ...x, password: '' }))
+      setMessage('Email connected and SMTP login verified.')
+      onSaved?.()
+    } catch (err) {
+      setMessage(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function saveWhatsApp(e) {
+    e.preventDefault()
+    setWaBusy(true); setWaMessage('')
+    try {
+      const res = await fetch('/api/settings/whatsapp', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(waForm) })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not connect WhatsApp')
+      setWaForm((x) => ({ ...x, accessToken: '' }))
+      setWaMessage('WhatsApp Cloud API connected and verified.')
+      onSaved?.()
+    } catch (err) { setWaMessage(err.message) } finally { setWaBusy(false) }
+  }
+
+  const custom = form.provider === 'custom'
+  return (
+    <div className="view settings-view">
+      <header className="view-head"><div><h2>Settings</h2><p>Connect the mailbox used for outreach and follow-ups.</p></div></header>
+      <form className="settings-card" onSubmit={save}>
+        <h3>Email account</h3>
+        <p className="muted">Credentials are stored encrypted on the server and the password is never returned to this browser.</p>
+        <label>Provider
+          <select value={form.provider} onChange={(e) => field('provider', e.target.value)}>
+            <option value="gmail">Gmail / Google Workspace</option>
+            <option value="outlook">Outlook / Microsoft 365</option>
+            <option value="custom">Custom SMTP</option>
+          </select>
+        </label>
+        <label>Sender name<input value={form.fromName} onChange={(e) => field('fromName', e.target.value)} /></label>
+        <label>Email<input type="email" required value={form.email} onChange={(e) => field('email', e.target.value)} placeholder="you@company.com" /></label>
+        <label>{form.provider === 'gmail' ? 'Google App Password' : 'SMTP password'}
+          <input type="password" value={form.password} onChange={(e) => field('password', e.target.value)} placeholder={account?.configured ? 'Leave blank to keep current password' : 'Required'} />
+        </label>
+        {custom ? <>
+          <label>SMTP host<input required value={form.host} onChange={(e) => field('host', e.target.value)} placeholder="smtp.example.com" /></label>
+          <label>SMTP port<input type="number" required value={form.port} onChange={(e) => field('port', Number(e.target.value))} /></label>
+          <label className="check"><input type="checkbox" checked={form.secure} onChange={(e) => field('secure', e.target.checked)} />Use TLS/SSL immediately</label>
+        </> : null}
+        {form.provider === 'gmail' ? <p className="cell-sub">Gmail requires 2-Step Verification and an App Password; do not enter your normal Google password.</p> : null}
+        {message ? <p className={message.startsWith('Email connected') ? 'success-line' : 'error'}>{message}</p> : null}
+        <button className="btn-primary" type="submit" disabled={busy}>{busy ? 'Testing connection…' : account?.configured ? 'Test & Update' : 'Test & Connect'}</button>
+        {account?.configured ? <p className="cell-sub">Currently connected: {account.email} via {account.provider}</p> : null}
+      </form>
+      <form className="settings-card" onSubmit={saveWhatsApp}>
+        <h3>WhatsApp Business</h3>
+        <p className="muted">Connect Meta WhatsApp Cloud API. The access token is encrypted and never returned to the browser.</p>
+        <label>Phone Number ID<input required value={waForm.phoneNumberId} onChange={(e) => setWaForm((x) => ({ ...x, phoneNumberId: e.target.value }))} /></label>
+        <label>WhatsApp Business Account ID<input value={waForm.businessAccountId} onChange={(e) => setWaForm((x) => ({ ...x, businessAccountId: e.target.value }))} /></label>
+        <label>Access Token<input type="password" value={waForm.accessToken} onChange={(e) => setWaForm((x) => ({ ...x, accessToken: e.target.value }))} placeholder={wa?.configured ? 'Leave blank to keep current token' : 'Required'} /></label>
+        <label>Graph API Version<input value={waForm.graphVersion} onChange={(e) => setWaForm((x) => ({ ...x, graphVersion: e.target.value }))} /></label>
+        {waMessage ? <p className={waMessage.startsWith('WhatsApp Cloud') ? 'success-line' : 'error'}>{waMessage}</p> : null}
+        <button className="btn-primary" type="submit" disabled={waBusy}>{waBusy ? 'Testing connection…' : wa?.configured ? 'Test & Update WhatsApp' : 'Test & Connect WhatsApp'}</button>
+        {wa?.configured ? <><p className="cell-sub">Connected Phone Number ID: {wa.phoneNumberId}</p><p className="cell-sub">Webhook: /api/webhooks/whatsapp · Verify token: {wa.verifyToken}</p></> : null}
+      </form>
+    </div>
+  )
+}
+
+function FindView({ config, onSent }) {
+  const [state, setState] = useState('TX')
+  const [city, setCity] = useState('')
+  const [postalCode, setPostalCode] = useState('')
+  const [category, setCategory] = useState('all')
+  const [contact, setContact] = useState('reachable')
+  const [hasWebsite, setHasWebsite] = useState('all')
+  const [outreachOnly, setOutreachOnly] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState('')
+  const [placeLabel, setPlaceLabel] = useState('')
+  const [businesses, setBusinesses] = useState([])
+  const [quality, setQuality] = useState(null)
+  const [selected, setSelected] = useState(() => new Set())
+  const [sendChannels, setSendChannels] = useState({ email: true, whatsapp: true })
+  const [dryRun, setDryRun] = useState(true)
+  const [lastSend, setLastSend] = useState(null)
+  const [preview, setPreview] = useState(null)
+  const [analysis, setAnalysis] = useState(null)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [minScore, setMinScore] = useState(0)
+  const [q, setQ] = useState('')
+  const [crm, setCrm] = useState(null)
+
+  const stateCities = useMemo(() => citiesForState(state), [state])
+
+  useEffect(() => {
+    if (!stateCities.includes(city)) setCity(stateCities[0] || '')
+  }, [state, stateCities, city])
+
+  const leads = useMemo(() => {
+    let list = applyLeadFilters(businesses, { category, contact, hasWebsite, outreachOnly })
+    if (minScore > 0) list = list.filter((b) => (b.opportunityScore || 0) >= minScore)
+    const needle = q.trim().toLowerCase()
+    if (needle) {
+      list = list.filter(
+        (b) =>
+          b.name.toLowerCase().includes(needle) ||
+          (b.address || '').toLowerCase().includes(needle) ||
+          (b.email || '').toLowerCase().includes(needle),
+      )
+    }
+    return list
+  }, [businesses, category, contact, hasWebsite, outreachOnly, minScore, q])
+
+  const selectedBusinesses = useMemo(
+    () => leads.filter((b) => selected.has(b.id)),
+    [leads, selected],
+  )
+
+  async function onSearch(e) {
+    e.preventDefault()
+    setError('')
+    setSelected(new Set())
+    setLastSend(null)
+    setPreview(null)
+    if (!state) return setError('Select a state.')
+    if (!city && !postalCode.trim()) return setError('Select a city or ZIP.')
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({ state, city, postalCode: postalCode.trim() })
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 40000)
+      const res = await fetch(`/api/businesses?${params}`, {
+        signal: controller.signal,
+        credentials: 'include',
+      })
+      clearTimeout(timer)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Search failed')
+      setPlaceLabel(data.place?.label || `${city}, ${state}`)
+      setBusinesses(data.businesses || [])
+      setQuality(data.quality || null)
+    } catch (err) {
+      setBusinesses([])
+      setError(err?.name === 'AbortError' ? 'Timed out — try again.' : err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function toggle(id) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function analyzeOne(business) {
+    setAnalyzing(true)
+    setError('')
+    try {
+      const res = await fetch('/api/intelligence/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ business }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Analysis failed')
+      setAnalysis({ business, ...data })
+    } catch (err) {
+      setError(err.message || 'Analysis failed')
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  async function saveCRM(business, patch) {
+    const res = await fetch(`/api/crm/lead/${encodeURIComponent(business.id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(patch),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || 'CRM update failed')
+    setCrm(data.crm)
+  }
+
+  async function openCRM(business) {
+    setError('')
+    try {
+      const res = await fetch(`/api/crm/lead/${encodeURIComponent(business.id)}`, { credentials: 'include' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not load lead')
+      setCrm({ business, ...(data.crm || { id: business.id, status: 'new', notes: '', nextFollowUpAt: null, outcome: null }) })
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function previewOne(business) {
+    const res = await fetch('/api/outreach/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ business }),
+    })
+    const data = await res.json()
+    if (!res.ok) return setError(data.error || 'Preview failed')
+    setPreview({ business, ...data })
+  }
+
+  async function sendSelected() {
+    if (!selectedBusinesses.length) return setError('Select at least one lead.')
+    const channels = []
+    if (sendChannels.email) channels.push('email')
+    if (sendChannels.whatsapp) channels.push('whatsapp')
+    if (!channels.length) return setError('Pick Email and/or WhatsApp.')
+
+    setSending(true)
+    setError('')
+    setLastSend(null)
+    try {
+      const res = await fetch('/api/outreach/send-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          businesses: selectedBusinesses,
+          channels,
+          dryRun,
+          limit: 40,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Send failed')
+      setLastSend(data)
+      onSent?.()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="view find-view">
+      <header className="view-head">
+        <div>
+          <h2>Find leads</h2>
+          <p>
+            Outreach-ready US businesses only (phone or email). Junk map POIs, embassies, and
+            artwork are excluded — unlike the old Italy dump.
+          </p>
+        </div>
+        <div className="api-pills">
+          <span className={config?.emailReady ? 'pill ok' : 'pill warn'}>
+            Email {config?.emailReady ? 'ready' : 'dry-run'}
+          </span>
+          <span className={config?.whatsappReady ? 'pill ok' : 'pill warn'}>
+            WhatsApp {config?.whatsappReady ? 'ready' : 'dry-run'}
+          </span>
+        </div>
+      </header>
+
+      <form className="toolbar" onSubmit={onSearch}>
+        <label>
+          State
+          <select
+            value={state}
+            onChange={(e) => {
+              setState(e.target.value)
+              setBusinesses([])
+              setPlaceLabel('')
+            }}
+          >
+            {US_STATES.map((s) => (
+              <option key={s.code} value={s.code}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          City
+          <select value={city} onChange={(e) => setCity(e.target.value)}>
+            {stateCities.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          ZIP
+          <input
+            value={postalCode}
+            onChange={(e) => setPostalCode(e.target.value)}
+            placeholder="Optional"
+          />
+        </label>
+        <button type="submit" className="btn-primary" disabled={loading}>
+          {loading ? 'Searching…' : 'Search'}
+        </button>
+      </form>
+
+      <div className="filters-bar">
+        <label>
+          Category
+          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            {CATEGORY_FILTERS.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Contact
+          <select value={contact} onChange={(e) => setContact(e.target.value)}>
+            <option value="reachable">Email or phone</option>
+            <option value="email">Has email</option>
+            <option value="phone">Has phone</option>
+            <option value="both">Both</option>
+            <option value="all">Any</option>
+          </select>
+        </label>
+        <label>
+          Website
+          <select value={hasWebsite} onChange={(e) => setHasWebsite(e.target.value)}>
+            <option value="all">Any website</option>
+            <option value="without">No website (best)</option>
+            <option value="with">Has website</option>
+          </select>
+        </label>
+        <label className="check filter-check">
+          <input
+            type="checkbox"
+            checked={outreachOnly}
+            onChange={(e) => setOutreachOnly(e.target.checked)}
+          />
+          Hot leads only (contact + no site)
+        </label>
+        <label>
+          Opportunity
+          <select value={minScore} onChange={(e) => setMinScore(Number(e.target.value))}>
+            <option value={0}>Any score</option>
+            <option value={60}>60+</option>
+            <option value={70}>70+</option>
+            <option value={80}>80+</option>
+            <option value={90}>90+</option>
+          </select>
+        </label>
+        <label className="grow">
+          Filter list
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search name, address, email…"
+          />
+        </label>
+      </div>
+
+      <div className="outreach-bar">
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={sendChannels.email}
+            onChange={(e) => setSendChannels((s) => ({ ...s, email: e.target.checked }))}
+          />
+          Email
+        </label>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={sendChannels.whatsapp}
+            onChange={(e) => setSendChannels((s) => ({ ...s, whatsapp: e.target.checked }))}
+          />
+          WhatsApp
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
+          Dry run
+        </label>
+        <div className="spacer" />
+        <button
+          type="button"
+          className="btn-ghost"
+          onClick={() => setSelected(new Set(leads.map((b) => b.id)))}
+          disabled={!leads.length}
+        >
+          Select all ({leads.length})
+        </button>
+        <button type="button" className="btn-ghost" onClick={() => setSelected(new Set())}>
+          Clear
+        </button>
+        <button
+          type="button"
+          className="btn-accent"
+          onClick={sendSelected}
+          disabled={sending || !selected.size}
+        >
+          {sending ? 'Sending…' : dryRun ? `Preview send (${selected.size})` : `Send (${selected.size})`}
+        </button>
+      </div>
+
+      {placeLabel ? (
+        <p className="meta-line">
+          <strong>{placeLabel}</strong>
+          <span>
+            {businesses.length} with contact
+            {quality?.outreachReady != null ? ` · ${quality.outreachReady} legacy hot leads` : ''}
+            {businesses.length ? ` · ${businesses.filter((b) => (b.opportunityScore || 0) >= 70).length} high opportunity` : ''}
+            {' · '}
+            {leads.length} shown · {selected.size} selected
+          </span>
+        </p>
+      ) : null}
+      {error ? <p className="error">{error}</p> : null}
+      {lastSend ? (
+        <p className="success-line">
+          Logged {lastSend.count} submission{lastSend.count === 1 ? '' : 's'}
+          {dryRun ? ' (dry run)' : ''}. See History → Submissions.
+        </p>
+      ) : null}
+
+      <div className="table-wrap leads-table">
+        <table>
+          <thead>
+              <tr>
+                <th className="check-col" />
+                <th>Business</th>
+                <th>Opportunity</th>
+                <th>Recommended</th>
+                <th>Category</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th />
+              </tr>
+          </thead>
+          <tbody>
+            {leads.length ? (
+              leads.map((b) => (
+                <tr key={b.id} className={selected.has(b.id) ? 'row-on' : ''}>
+                  <td className="check-col">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(b.id)}
+                      onChange={() => toggle(b.id)}
+                    />
+                  </td>
+                  <td>
+                    <strong>{b.name}</strong>
+                    <div className="cell-sub">{b.address}</div>
+                    {b.website ? (
+                      <a href={b.website} target="_blank" rel="noreferrer" className="cell-link">
+                        Website
+                      </a>
+                    ) : null}
+                  </td>
+                  <td>
+                    <strong className="score-value">{b.opportunityScore ?? '—'}/100</strong>
+                    <div className="cell-sub">{b.confidenceScore ?? '—'}% confidence</div>
+                  </td>
+                  <td>
+                    {b.recommendedServices?.[0]?.name || 'Analyze for recommendation'}
+                  </td>
+                  <td>{b.category}</td>
+                  <td>{b.email || '—'}</td>
+                  <td>{b.phone || '—'}</td>
+                  <td>
+                    <button type="button" className="btn-ghost tiny" onClick={() => analyzeOne(b)} disabled={analyzing}>Analyze</button>
+                    <button type="button" className="btn-ghost tiny" onClick={() => openCRM(b)}>CRM</button>
+                    <button type="button" className="btn-ghost tiny" onClick={() => previewOne(b)}>
+                      Preview
+                    </button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={8} className="empty-row">
+                  {loading
+                    ? 'Searching outreach-ready leads…'
+                    : 'Pick a state and city, then search.'}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {analysis ? (
+        <aside className="drawer intelligence-drawer">
+          <div className="drawer-head">
+            <div><h3>{analysis.business.name}</h3><div className="cell-sub">Business Growth Intelligence</div></div>
+            <button type="button" className="btn-ghost tiny" onClick={() => setAnalysis(null)}>Close</button>
+          </div>
+          <div className="score-hero"><strong>{analysis.intelligence.opportunityScore}/100</strong><span>Growth Opportunity</span></div>
+          <h4>Why this lead</h4>
+          <ul className="reason-list">{analysis.intelligence.reasoning.map((x, i) => <li key={i}>{x}</li>)}</ul>
+          <h4>Recommended services</h4>
+          <div className="service-list">{analysis.intelligence.recommendedServices.length ? analysis.intelligence.recommendedServices.map((s) => <div className="service-item" key={s.id}><strong>{s.name}</strong><span>{s.reason}</span></div>) : <p className="muted">No service recommendation can be supported by the available evidence yet.</p>}</div>
+          <h4>Score breakdown</h4>
+          <div className="breakdown">{analysis.intelligence.breakdown.map((x) => <div className="breakdown-row" key={x.label}><span>{x.label}</span><strong>{x.points}/{x.max}</strong></div>)}</div>
+          {analysis.audit?.reachable ? <p className="muted">Website audited successfully. Only observable page signals were used.</p> : analysis.business.website ? <p className="muted">Website audit unavailable: {analysis.audit?.error || 'unreachable'}.</p> : null}
+        </aside>
+      ) : null}
+
+      {crm ? (
+        <aside className="drawer crm-drawer">
+          <div className="drawer-head">
+            <div><h3>{crm.business?.name || 'Lead CRM'}</h3><div className="cell-sub">Pipeline memory</div></div>
+            <button type="button" className="btn-ghost tiny" onClick={() => setCrm(null)}>Close</button>
+          </div>
+          <label>Status
+            <select value={crm.status || 'new'} onChange={(e) => saveCRM(crm.business, { status: e.target.value })}>
+              {['new','contacted','replied','qualified','proposal','won','lost','paused'].map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </label>
+          <label>Next follow-up
+            <input type="datetime-local" value={crm.nextFollowUpAt ? String(crm.nextFollowUpAt).slice(0,16) : ''} onChange={(e) => saveCRM(crm.business, { nextFollowUpAt: e.target.value ? new Date(e.target.value).toISOString() : null })} />
+          </label>
+          <label>Deal value ($)
+            <input type="number" min="0" value={crm.dealValue || ''} placeholder="e.g. 1500" onChange={(e) => setCrm((x) => ({ ...x, dealValue: e.target.value }))} onBlur={() => saveCRM(crm.business, { dealValue: Number(crm.dealValue || 0) })} />
+          </label>
+          <label>Outcome
+            <input value={crm.outcome || ''} placeholder="e.g. interested, no response" onChange={(e) => setCrm((x) => ({ ...x, outcome: e.target.value }))} onBlur={() => saveCRM(crm.business, { outcome: crm.outcome || null })} />
+          </label>
+          <label>Notes
+            <textarea rows="5" value={crm.notes || ''} placeholder="Conversation notes, objections, requirements…" onChange={(e) => setCrm((x) => ({ ...x, notes: e.target.value }))} onBlur={() => saveCRM(crm.business, { notes: crm.notes || '' })} />
+          </label>
+        </aside>
+      ) : null}
+
+      {preview ? (
+        <aside className="drawer">
+          <div className="drawer-head">
+            <h3>{preview.business.name}</h3>
+            <button type="button" className="btn-ghost tiny" onClick={() => setPreview(null)}>
+              Close
+            </button>
+          </div>
+          <h4>Email → {preview.email.to || 'none'}</h4>
+          <p className="subj">{preview.email.subject}</p>
+          <pre>{preview.email.body}</pre>
+          <h4>WhatsApp → {preview.whatsapp.to || 'none'}</h4>
+          <pre>{preview.whatsapp.body}</pre>
+        </aside>
+      ) : null}
+    </div>
+  )
+}
+
+export default function App() {
+  const [user, setUser] = useState(null)
+  const [authChecked, setAuthChecked] = useState(false)
+  const [nav, setNav] = useState('dashboard')
+  const [config, setConfig] = useState(null)
+  const [historyKey, setHistoryKey] = useState(0)
+
+  useEffect(() => {
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.authenticated) setUser({ email: data.email, name: data.name })
+      })
+      .finally(() => setAuthChecked(true))
+  }, [])
+
+  useEffect(() => {
+    if (!user) return
+    fetch('/api/config', { credentials: 'include' })
+      .then((r) => r.json())
+      .then(setConfig)
+      .catch(() => {})
+  }, [user, historyKey])
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+    setUser(null)
+    setConfig(null)
+  }
+
+  if (!authChecked) {
+    return (
+      <div className="boot">
+        <p>Loading workspace…</p>
+      </div>
+    )
+  }
+
+  if (!user) return <LoginScreen onLoggedIn={setUser} />
+
+  return (
+    <div className="app">
+      <aside className="sidebar">
+        <div className="side-brand">
+          <p className="brand-mark">Confidence Arise</p>
+          <h1>Growth Agent</h1>
+          <p className="side-user">{user.name || 'Naeema'}</p>
+        </div>
+        <nav>
+          {NAV.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={nav === item.id ? 'nav-item on' : 'nav-item'}
+              onClick={() => setNav(item.id)}
+            >
+              {item.label}
+              {item.id === 'history' && config?.history ? (
+                <span className="nav-count">{config.history.submissions || 0}</span>
+              ) : null}
+            </button>
+          ))}
+        </nav>
+        <div className="side-foot">
+          <a href={config?.siteUrl || 'https://confidencearise.com'} target="_blank" rel="noreferrer">
+            confidencearise.com
+          </a>
+          <button type="button" className="btn-ghost tiny" onClick={logout}>
+            Sign out
+          </button>
+        </div>
+      </aside>
+
+      <main className="main">
+        {nav === 'dashboard' ? (
+          <DashboardView />
+        ) : nav === 'find' ? (
+          <FindView
+            config={config}
+            onSent={() => setHistoryKey((k) => k + 1)}
+          />
+        ) : nav === 'settings' ? (
+          <SettingsView config={config} onSaved={() => setHistoryKey((k) => k + 1)} />
+        ) : (
+          <HistoryView key={historyKey} />
+        )}
+      </main>
+    </div>
+  )
+}
+ + Number(stats.wonRevenue || 0).toLocaleString()],
+    ['Qualified', stats.qualified], ['Proposals', stats.proposals], ['Won', stats.won],
+    ['Follow-ups due', stats.followUpsDue], ['Reply rate', `${stats.replyRate}%`], ['Win rate', `${stats.winRate}%`],
+  ] : []
+  return <div className="view">
+    <header className="view-head"><div><h2>Growth Command Center</h2><p>Live CRM funnel based only on stored outreach and reply activity.</p></div></header>
+    {error ? <p className="error">{error}</p> : null}
+    <div className="metric-grid">{cards.map(([label,value]) => <div className="metric-card" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
+    {stats ? <div className="settings-card funnel-card"><h3>Pipeline</h3><div className="funnel-row"><span>Contacted</span><strong>{stats.contacted}</strong></div><div className="funnel-row"><span>Replied</span><strong>{stats.replied}</strong></div><div className="funnel-row"><span>Qualified</span><strong>{stats.qualified}</strong></div><div className="funnel-row"><span>Proposal</span><strong>{stats.proposals}</strong></div><div className="funnel-row"><span>Won</span><strong>{stats.won}</strong></div></div> : <p className="muted">Loading metrics…</p>}
+  </div>
+}
+
+function SettingsView({ config, onSaved }) {
+  const account = config?.emailAccount
+  const [form, setForm] = useState({
+    provider: account?.provider || 'gmail',
+    email: account?.email || '',
+    fromName: account?.fromName || 'Confidence Arise',
+    password: '',
+    host: account?.host || '',
+    port: account?.port || 587,
+    secure: Boolean(account?.secure),
+  })
+  const wa = config?.whatsappAccount
+  const [waForm, setWaForm] = useState({
+    phoneNumberId: wa?.phoneNumberId || '',
+    businessAccountId: wa?.businessAccountId || '',
+    graphVersion: wa?.graphVersion || 'v21.0',
+    accessToken: '',
+  })
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+  const [waBusy, setWaBusy] = useState(false)
+  const [waMessage, setWaMessage] = useState('')
+
+  function field(name, value) { setForm((x) => ({ ...x, [name]: value })) }
+
+  async function save(e) {
+    e.preventDefault()
+    setBusy(true)
+    setMessage('')
+    try {
+      const res = await fetch('/api/settings/email', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(form),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not connect email')
+      setForm((x) => ({ ...x, password: '' }))
+      setMessage('Email connected and SMTP login verified.')
+      onSaved?.()
+    } catch (err) {
+      setMessage(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function saveWhatsApp(e) {
+    e.preventDefault()
+    setWaBusy(true); setWaMessage('')
+    try {
+      const res = await fetch('/api/settings/whatsapp', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(waForm) })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not connect WhatsApp')
+      setWaForm((x) => ({ ...x, accessToken: '' }))
+      setWaMessage('WhatsApp Cloud API connected and verified.')
+      onSaved?.()
+    } catch (err) { setWaMessage(err.message) } finally { setWaBusy(false) }
+  }
+
+  const custom = form.provider === 'custom'
+  return (
+    <div className="view settings-view">
+      <header className="view-head"><div><h2>Settings</h2><p>Connect the mailbox used for outreach and follow-ups.</p></div></header>
+      <form className="settings-card" onSubmit={save}>
+        <h3>Email account</h3>
+        <p className="muted">Credentials are stored encrypted on the server and the password is never returned to this browser.</p>
+        <label>Provider
+          <select value={form.provider} onChange={(e) => field('provider', e.target.value)}>
+            <option value="gmail">Gmail / Google Workspace</option>
+            <option value="outlook">Outlook / Microsoft 365</option>
+            <option value="custom">Custom SMTP</option>
+          </select>
+        </label>
+        <label>Sender name<input value={form.fromName} onChange={(e) => field('fromName', e.target.value)} /></label>
+        <label>Email<input type="email" required value={form.email} onChange={(e) => field('email', e.target.value)} placeholder="you@company.com" /></label>
+        <label>{form.provider === 'gmail' ? 'Google App Password' : 'SMTP password'}
+          <input type="password" value={form.password} onChange={(e) => field('password', e.target.value)} placeholder={account?.configured ? 'Leave blank to keep current password' : 'Required'} />
+        </label>
+        {custom ? <>
+          <label>SMTP host<input required value={form.host} onChange={(e) => field('host', e.target.value)} placeholder="smtp.example.com" /></label>
+          <label>SMTP port<input type="number" required value={form.port} onChange={(e) => field('port', Number(e.target.value))} /></label>
+          <label className="check"><input type="checkbox" checked={form.secure} onChange={(e) => field('secure', e.target.checked)} />Use TLS/SSL immediately</label>
+        </> : null}
+        {form.provider === 'gmail' ? <p className="cell-sub">Gmail requires 2-Step Verification and an App Password; do not enter your normal Google password.</p> : null}
+        {message ? <p className={message.startsWith('Email connected') ? 'success-line' : 'error'}>{message}</p> : null}
+        <button className="btn-primary" type="submit" disabled={busy}>{busy ? 'Testing connection…' : account?.configured ? 'Test & Update' : 'Test & Connect'}</button>
+        {account?.configured ? <p className="cell-sub">Currently connected: {account.email} via {account.provider}</p> : null}
+      </form>
+      <form className="settings-card" onSubmit={saveWhatsApp}>
+        <h3>WhatsApp Business</h3>
+        <p className="muted">Connect Meta WhatsApp Cloud API. The access token is encrypted and never returned to the browser.</p>
+        <label>Phone Number ID<input required value={waForm.phoneNumberId} onChange={(e) => setWaForm((x) => ({ ...x, phoneNumberId: e.target.value }))} /></label>
+        <label>WhatsApp Business Account ID<input value={waForm.businessAccountId} onChange={(e) => setWaForm((x) => ({ ...x, businessAccountId: e.target.value }))} /></label>
+        <label>Access Token<input type="password" value={waForm.accessToken} onChange={(e) => setWaForm((x) => ({ ...x, accessToken: e.target.value }))} placeholder={wa?.configured ? 'Leave blank to keep current token' : 'Required'} /></label>
+        <label>Graph API Version<input value={waForm.graphVersion} onChange={(e) => setWaForm((x) => ({ ...x, graphVersion: e.target.value }))} /></label>
+        {waMessage ? <p className={waMessage.startsWith('WhatsApp Cloud') ? 'success-line' : 'error'}>{waMessage}</p> : null}
+        <button className="btn-primary" type="submit" disabled={waBusy}>{waBusy ? 'Testing connection…' : wa?.configured ? 'Test & Update WhatsApp' : 'Test & Connect WhatsApp'}</button>
+        {wa?.configured ? <><p className="cell-sub">Connected Phone Number ID: {wa.phoneNumberId}</p><p className="cell-sub">Webhook: /api/webhooks/whatsapp · Verify token: {wa.verifyToken}</p></> : null}
+      </form>
+    </div>
+  )
+}
+
+function FindView({ config, onSent }) {
+  const [state, setState] = useState('TX')
+  const [city, setCity] = useState('')
+  const [postalCode, setPostalCode] = useState('')
+  const [category, setCategory] = useState('all')
+  const [contact, setContact] = useState('reachable')
+  const [hasWebsite, setHasWebsite] = useState('all')
+  const [outreachOnly, setOutreachOnly] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState('')
+  const [placeLabel, setPlaceLabel] = useState('')
+  const [businesses, setBusinesses] = useState([])
+  const [quality, setQuality] = useState(null)
+  const [selected, setSelected] = useState(() => new Set())
+  const [sendChannels, setSendChannels] = useState({ email: true, whatsapp: true })
+  const [dryRun, setDryRun] = useState(true)
+  const [lastSend, setLastSend] = useState(null)
+  const [preview, setPreview] = useState(null)
+  const [analysis, setAnalysis] = useState(null)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [minScore, setMinScore] = useState(0)
+  const [q, setQ] = useState('')
+  const [crm, setCrm] = useState(null)
+
+  const stateCities = useMemo(() => citiesForState(state), [state])
+
+  useEffect(() => {
+    if (!stateCities.includes(city)) setCity(stateCities[0] || '')
+  }, [state, stateCities, city])
+
+  const leads = useMemo(() => {
+    let list = applyLeadFilters(businesses, { category, contact, hasWebsite, outreachOnly })
+    if (minScore > 0) list = list.filter((b) => (b.opportunityScore || 0) >= minScore)
+    const needle = q.trim().toLowerCase()
+    if (needle) {
+      list = list.filter(
+        (b) =>
+          b.name.toLowerCase().includes(needle) ||
+          (b.address || '').toLowerCase().includes(needle) ||
+          (b.email || '').toLowerCase().includes(needle),
+      )
+    }
+    return list
+  }, [businesses, category, contact, hasWebsite, outreachOnly, minScore, q])
+
+  const selectedBusinesses = useMemo(
+    () => leads.filter((b) => selected.has(b.id)),
+    [leads, selected],
+  )
+
+  async function onSearch(e) {
+    e.preventDefault()
+    setError('')
+    setSelected(new Set())
+    setLastSend(null)
+    setPreview(null)
+    if (!state) return setError('Select a state.')
+    if (!city && !postalCode.trim()) return setError('Select a city or ZIP.')
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({ state, city, postalCode: postalCode.trim() })
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 40000)
+      const res = await fetch(`/api/businesses?${params}`, {
+        signal: controller.signal,
+        credentials: 'include',
+      })
+      clearTimeout(timer)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Search failed')
+      setPlaceLabel(data.place?.label || `${city}, ${state}`)
+      setBusinesses(data.businesses || [])
+      setQuality(data.quality || null)
+    } catch (err) {
+      setBusinesses([])
+      setError(err?.name === 'AbortError' ? 'Timed out — try again.' : err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function toggle(id) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function analyzeOne(business) {
+    setAnalyzing(true)
+    setError('')
+    try {
+      const res = await fetch('/api/intelligence/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ business }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Analysis failed')
+      setAnalysis({ business, ...data })
+    } catch (err) {
+      setError(err.message || 'Analysis failed')
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  async function saveCRM(business, patch) {
+    const res = await fetch(`/api/crm/lead/${encodeURIComponent(business.id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(patch),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || 'CRM update failed')
+    setCrm(data.crm)
+  }
+
+  async function openCRM(business) {
+    setError('')
+    try {
+      const res = await fetch(`/api/crm/lead/${encodeURIComponent(business.id)}`, { credentials: 'include' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not load lead')
+      setCrm({ business, ...(data.crm || { id: business.id, status: 'new', notes: '', nextFollowUpAt: null, outcome: null }) })
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function previewOne(business) {
+    const res = await fetch('/api/outreach/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ business }),
+    })
+    const data = await res.json()
+    if (!res.ok) return setError(data.error || 'Preview failed')
+    setPreview({ business, ...data })
+  }
+
+  async function sendSelected() {
+    if (!selectedBusinesses.length) return setError('Select at least one lead.')
+    const channels = []
+    if (sendChannels.email) channels.push('email')
+    if (sendChannels.whatsapp) channels.push('whatsapp')
+    if (!channels.length) return setError('Pick Email and/or WhatsApp.')
+
+    setSending(true)
+    setError('')
+    setLastSend(null)
+    try {
+      const res = await fetch('/api/outreach/send-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          businesses: selectedBusinesses,
+          channels,
+          dryRun,
+          limit: 40,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Send failed')
+      setLastSend(data)
+      onSent?.()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="view find-view">
+      <header className="view-head">
+        <div>
+          <h2>Find leads</h2>
+          <p>
+            Outreach-ready US businesses only (phone or email). Junk map POIs, embassies, and
+            artwork are excluded — unlike the old Italy dump.
+          </p>
+        </div>
+        <div className="api-pills">
+          <span className={config?.emailReady ? 'pill ok' : 'pill warn'}>
+            Email {config?.emailReady ? 'ready' : 'dry-run'}
+          </span>
+          <span className={config?.whatsappReady ? 'pill ok' : 'pill warn'}>
+            WhatsApp {config?.whatsappReady ? 'ready' : 'dry-run'}
+          </span>
+        </div>
+      </header>
+
+      <form className="toolbar" onSubmit={onSearch}>
+        <label>
+          State
+          <select
+            value={state}
+            onChange={(e) => {
+              setState(e.target.value)
+              setBusinesses([])
+              setPlaceLabel('')
+            }}
+          >
+            {US_STATES.map((s) => (
+              <option key={s.code} value={s.code}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          City
+          <select value={city} onChange={(e) => setCity(e.target.value)}>
+            {stateCities.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          ZIP
+          <input
+            value={postalCode}
+            onChange={(e) => setPostalCode(e.target.value)}
+            placeholder="Optional"
+          />
+        </label>
+        <button type="submit" className="btn-primary" disabled={loading}>
+          {loading ? 'Searching…' : 'Search'}
+        </button>
+      </form>
+
+      <div className="filters-bar">
+        <label>
+          Category
+          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            {CATEGORY_FILTERS.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Contact
+          <select value={contact} onChange={(e) => setContact(e.target.value)}>
+            <option value="reachable">Email or phone</option>
+            <option value="email">Has email</option>
+            <option value="phone">Has phone</option>
+            <option value="both">Both</option>
+            <option value="all">Any</option>
+          </select>
+        </label>
+        <label>
+          Website
+          <select value={hasWebsite} onChange={(e) => setHasWebsite(e.target.value)}>
+            <option value="all">Any website</option>
+            <option value="without">No website (best)</option>
+            <option value="with">Has website</option>
+          </select>
+        </label>
+        <label className="check filter-check">
+          <input
+            type="checkbox"
+            checked={outreachOnly}
+            onChange={(e) => setOutreachOnly(e.target.checked)}
+          />
+          Hot leads only (contact + no site)
+        </label>
+        <label>
+          Opportunity
+          <select value={minScore} onChange={(e) => setMinScore(Number(e.target.value))}>
+            <option value={0}>Any score</option>
+            <option value={60}>60+</option>
+            <option value={70}>70+</option>
+            <option value={80}>80+</option>
+            <option value={90}>90+</option>
+          </select>
+        </label>
+        <label className="grow">
+          Filter list
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search name, address, email…"
+          />
+        </label>
+      </div>
+
+      <div className="outreach-bar">
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={sendChannels.email}
+            onChange={(e) => setSendChannels((s) => ({ ...s, email: e.target.checked }))}
+          />
+          Email
+        </label>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={sendChannels.whatsapp}
+            onChange={(e) => setSendChannels((s) => ({ ...s, whatsapp: e.target.checked }))}
+          />
+          WhatsApp
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
+          Dry run
+        </label>
+        <div className="spacer" />
+        <button
+          type="button"
+          className="btn-ghost"
+          onClick={() => setSelected(new Set(leads.map((b) => b.id)))}
+          disabled={!leads.length}
+        >
+          Select all ({leads.length})
+        </button>
+        <button type="button" className="btn-ghost" onClick={() => setSelected(new Set())}>
+          Clear
+        </button>
+        <button
+          type="button"
+          className="btn-accent"
+          onClick={sendSelected}
+          disabled={sending || !selected.size}
+        >
+          {sending ? 'Sending…' : dryRun ? `Preview send (${selected.size})` : `Send (${selected.size})`}
+        </button>
+      </div>
+
+      {placeLabel ? (
+        <p className="meta-line">
+          <strong>{placeLabel}</strong>
+          <span>
+            {businesses.length} with contact
+            {quality?.outreachReady != null ? ` · ${quality.outreachReady} legacy hot leads` : ''}
+            {businesses.length ? ` · ${businesses.filter((b) => (b.opportunityScore || 0) >= 70).length} high opportunity` : ''}
+            {' · '}
+            {leads.length} shown · {selected.size} selected
+          </span>
+        </p>
+      ) : null}
+      {error ? <p className="error">{error}</p> : null}
+      {lastSend ? (
+        <p className="success-line">
+          Logged {lastSend.count} submission{lastSend.count === 1 ? '' : 's'}
+          {dryRun ? ' (dry run)' : ''}. See History → Submissions.
+        </p>
+      ) : null}
+
+      <div className="table-wrap leads-table">
+        <table>
+          <thead>
+              <tr>
+                <th className="check-col" />
+                <th>Business</th>
+                <th>Opportunity</th>
+                <th>Recommended</th>
+                <th>Category</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th />
+              </tr>
+          </thead>
+          <tbody>
+            {leads.length ? (
+              leads.map((b) => (
+                <tr key={b.id} className={selected.has(b.id) ? 'row-on' : ''}>
+                  <td className="check-col">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(b.id)}
+                      onChange={() => toggle(b.id)}
+                    />
+                  </td>
+                  <td>
+                    <strong>{b.name}</strong>
+                    <div className="cell-sub">{b.address}</div>
+                    {b.website ? (
+                      <a href={b.website} target="_blank" rel="noreferrer" className="cell-link">
+                        Website
+                      </a>
+                    ) : null}
+                  </td>
+                  <td>
+                    <strong className="score-value">{b.opportunityScore ?? '—'}/100</strong>
+                    <div className="cell-sub">{b.confidenceScore ?? '—'}% confidence</div>
+                  </td>
+                  <td>
+                    {b.recommendedServices?.[0]?.name || 'Analyze for recommendation'}
+                  </td>
+                  <td>{b.category}</td>
+                  <td>{b.email || '—'}</td>
+                  <td>{b.phone || '—'}</td>
+                  <td>
+                    <button type="button" className="btn-ghost tiny" onClick={() => analyzeOne(b)} disabled={analyzing}>Analyze</button>
+                    <button type="button" className="btn-ghost tiny" onClick={() => openCRM(b)}>CRM</button>
+                    <button type="button" className="btn-ghost tiny" onClick={() => previewOne(b)}>
+                      Preview
+                    </button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={8} className="empty-row">
+                  {loading
+                    ? 'Searching outreach-ready leads…'
+                    : 'Pick a state and city, then search.'}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {analysis ? (
+        <aside className="drawer intelligence-drawer">
+          <div className="drawer-head">
+            <div><h3>{analysis.business.name}</h3><div className="cell-sub">Business Growth Intelligence</div></div>
+            <button type="button" className="btn-ghost tiny" onClick={() => setAnalysis(null)}>Close</button>
+          </div>
+          <div className="score-hero"><strong>{analysis.intelligence.opportunityScore}/100</strong><span>Growth Opportunity</span></div>
+          <h4>Why this lead</h4>
+          <ul className="reason-list">{analysis.intelligence.reasoning.map((x, i) => <li key={i}>{x}</li>)}</ul>
+          <h4>Recommended services</h4>
+          <div className="service-list">{analysis.intelligence.recommendedServices.length ? analysis.intelligence.recommendedServices.map((s) => <div className="service-item" key={s.id}><strong>{s.name}</strong><span>{s.reason}</span></div>) : <p className="muted">No service recommendation can be supported by the available evidence yet.</p>}</div>
+          <h4>Score breakdown</h4>
+          <div className="breakdown">{analysis.intelligence.breakdown.map((x) => <div className="breakdown-row" key={x.label}><span>{x.label}</span><strong>{x.points}/{x.max}</strong></div>)}</div>
+          {analysis.audit?.reachable ? <p className="muted">Website audited successfully. Only observable page signals were used.</p> : analysis.business.website ? <p className="muted">Website audit unavailable: {analysis.audit?.error || 'unreachable'}.</p> : null}
+        </aside>
+      ) : null}
+
+      {crm ? (
+        <aside className="drawer crm-drawer">
+          <div className="drawer-head">
+            <div><h3>{crm.business?.name || 'Lead CRM'}</h3><div className="cell-sub">Pipeline memory</div></div>
+            <button type="button" className="btn-ghost tiny" onClick={() => setCrm(null)}>Close</button>
+          </div>
+          <label>Status
+            <select value={crm.status || 'new'} onChange={(e) => saveCRM(crm.business, { status: e.target.value })}>
+              {['new','contacted','replied','qualified','proposal','won','lost','paused'].map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </label>
+          <label>Next follow-up
+            <input type="datetime-local" value={crm.nextFollowUpAt ? String(crm.nextFollowUpAt).slice(0,16) : ''} onChange={(e) => saveCRM(crm.business, { nextFollowUpAt: e.target.value ? new Date(e.target.value).toISOString() : null })} />
+          </label>
+          <label>Deal value ($)
+            <input type="number" min="0" value={crm.dealValue || ''} placeholder="e.g. 1500" onChange={(e) => setCrm((x) => ({ ...x, dealValue: e.target.value }))} onBlur={() => saveCRM(crm.business, { dealValue: Number(crm.dealValue || 0) })} />
+          </label>
+          <label>Outcome
+            <input value={crm.outcome || ''} placeholder="e.g. interested, no response" onChange={(e) => setCrm((x) => ({ ...x, outcome: e.target.value }))} onBlur={() => saveCRM(crm.business, { outcome: crm.outcome || null })} />
+          </label>
+          <label>Notes
+            <textarea rows="5" value={crm.notes || ''} placeholder="Conversation notes, objections, requirements…" onChange={(e) => setCrm((x) => ({ ...x, notes: e.target.value }))} onBlur={() => saveCRM(crm.business, { notes: crm.notes || '' })} />
+          </label>
+        </aside>
+      ) : null}
+
+      {preview ? (
+        <aside className="drawer">
+          <div className="drawer-head">
+            <h3>{preview.business.name}</h3>
+            <button type="button" className="btn-ghost tiny" onClick={() => setPreview(null)}>
+              Close
+            </button>
+          </div>
+          <h4>Email → {preview.email.to || 'none'}</h4>
+          <p className="subj">{preview.email.subject}</p>
+          <pre>{preview.email.body}</pre>
+          <h4>WhatsApp → {preview.whatsapp.to || 'none'}</h4>
+          <pre>{preview.whatsapp.body}</pre>
+        </aside>
+      ) : null}
+    </div>
+  )
+}
+
+export default function App() {
+  const [user, setUser] = useState(null)
+  const [authChecked, setAuthChecked] = useState(false)
+  const [nav, setNav] = useState('dashboard')
+  const [config, setConfig] = useState(null)
+  const [historyKey, setHistoryKey] = useState(0)
+
+  useEffect(() => {
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.authenticated) setUser({ email: data.email, name: data.name })
+      })
+      .finally(() => setAuthChecked(true))
+  }, [])
+
+  useEffect(() => {
+    if (!user) return
+    fetch('/api/config', { credentials: 'include' })
+      .then((r) => r.json())
+      .then(setConfig)
+      .catch(() => {})
+  }, [user, historyKey])
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+    setUser(null)
+    setConfig(null)
+  }
+
+  if (!authChecked) {
+    return (
+      <div className="boot">
+        <p>Loading workspace…</p>
+      </div>
+    )
+  }
+
+  if (!user) return <LoginScreen onLoggedIn={setUser} />
+
+  return (
+    <div className="app">
+      <aside className="sidebar">
+        <div className="side-brand">
+          <p className="brand-mark">Confidence Arise</p>
+          <h1>Growth Agent</h1>
+          <p className="side-user">{user.name || 'Naeema'}</p>
+        </div>
+        <nav>
+          {NAV.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={nav === item.id ? 'nav-item on' : 'nav-item'}
+              onClick={() => setNav(item.id)}
+            >
+              {item.label}
+              {item.id === 'history' && config?.history ? (
+                <span className="nav-count">{config.history.submissions || 0}</span>
+              ) : null}
+            </button>
+          ))}
+        </nav>
+        <div className="side-foot">
+          <a href={config?.siteUrl || 'https://confidencearise.com'} target="_blank" rel="noreferrer">
+            confidencearise.com
+          </a>
+          <button type="button" className="btn-ghost tiny" onClick={logout}>
+            Sign out
+          </button>
+        </div>
+      </aside>
+
+      <main className="main">
+        {nav === 'dashboard' ? (
+          <DashboardView />
+        ) : nav === 'find' ? (
+          <FindView
+            config={config}
+            onSent={() => setHistoryKey((k) => k + 1)}
+          />
+        ) : nav === 'settings' ? (
+          <SettingsView config={config} onSaved={() => setHistoryKey((k) => k + 1)} />
+        ) : (
+          <HistoryView key={historyKey} />
+        )}
+      </main>
+    </div>
+  )
+}
+ + Number(stats.wonRevenue || 0).toLocaleString()],
     ['Qualified', stats.qualified], ['Proposals', stats.proposals], ['Won', stats.won],
     ['Follow-ups due', stats.followUpsDue], ['Reply rate', `${stats.replyRate}%`], ['Win rate', `${stats.winRate}%`],
   ] : []
