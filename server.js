@@ -30,7 +30,7 @@ app.use(express.json({ limit: '1mb' }))
 
 const recent = new Map()
 const CACHE_MS = 25 * 60 * 1000
-const CACHE_VERSION = 'usa-v5-volume'
+const CACHE_VERSION = 'usa-v6-multisource'
 
 function siteConfig() {
   return {
@@ -116,7 +116,7 @@ app.get('/api/businesses', requireAuth, async (req, res) => {
 
   const timeout = setTimeout(() => {
     if (!res.headersSent) res.status(504).json({ error: 'Search timed out. Try again.' })
-  }, 35_000)
+  }, 55_000)
 
   try {
     const result = await searchBusinesses({ state, city, postalCode })
