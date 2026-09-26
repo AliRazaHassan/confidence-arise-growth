@@ -195,7 +195,7 @@ function elementToBusiness(el) {
     lon: el.lon ?? el.center?.lon ?? null,
   }
   business.legacyScore = leadScore(business)
-  business.intelligence = analyzeBusiness(business, row.websiteAudit || null)
+  business.intelligence = baselineBusinessAnalysis(business)
   business.opportunityScore = business.intelligence.opportunityScore
   business.confidenceScore = business.intelligence.confidenceScore
   business.recommendedServices = business.intelligence.recommendedServices
@@ -408,7 +408,7 @@ function webResultToBusiness(row, index) {
     lon: null,
   }
   business.legacyScore = leadScore(business)
-  business.intelligence = baselineBusinessAnalysis(business)
+  business.intelligence = analyzeBusiness(business, row.websiteAudit || null)
   business.opportunityScore = business.intelligence.opportunityScore
   business.confidenceScore = business.intelligence.confidenceScore
   business.recommendedServices = business.intelligence.recommendedServices
