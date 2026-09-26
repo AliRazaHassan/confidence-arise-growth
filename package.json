@@ -19,7 +19,9 @@
     "express": "^5.2.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "nodemailer": "^7.0.6"
+    "nodemailer": "^7.0.6",
+    "imapflow": "^1.0.195",
+    "mailparser": "^3.7.4"
   },
   "engines": {
     "node": ">=20"
