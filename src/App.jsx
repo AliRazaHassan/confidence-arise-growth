@@ -1043,9 +1043,9 @@ function Concierge() {
   }
 
   return <>
-    <button type="button" className="concierge-fab" onClick={() => setOpen((x) => !x)} aria-label="Open AI concierge">AI</button>
+    <button type="button" className="concierge-fab" onClick={() => setOpen((x) => !x)} aria-label="Open AI concierge"><span className="robot-icon" aria-hidden="true">🤖</span></button>
     {open ? <aside className="concierge-panel">
-      <div className="concierge-head"><div><strong>AI Concierge</strong><span>Growth copilot</span></div><button className="btn-ghost tiny" onClick={() => setOpen(false)}>Close</button></div>
+      <div className="concierge-head"><div className="concierge-title"><span className="robot-avatar" aria-hidden="true">🤖</span><div><strong>AI Concierge</strong><span>Growth copilot</span></div></div><button className="btn-ghost tiny" onClick={() => setOpen(false)}>Close</button></div>
       <div className="concierge-quick">
         {['What should I do today?', 'Show hot leads', 'Follow-ups due?', 'Pipeline status'].map((q) => <button type="button" key={q} onClick={() => ask(q)}>{q}</button>)}
       </div>
