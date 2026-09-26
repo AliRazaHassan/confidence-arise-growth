@@ -111,7 +111,7 @@ export function recordBatchSubmissions(items) {
   return items.map((item) => recordSubmission(item))
 }
 
-export function updateLeadCRM({ id, status, notes, nextFollowUpAt, outcome, followUpCount, lastFollowUpAt }) {
+export function updateLeadCRM({ id, status, notes, nextFollowUpAt, outcome, followUpCount, lastFollowUpAt, dealValue }) {
   if (!id) return null
   const map = readJson(CRM_FILE, {})
   const prev = map[id] || {}
@@ -124,6 +124,7 @@ export function updateLeadCRM({ id, status, notes, nextFollowUpAt, outcome, foll
     outcome: outcome ?? prev.outcome ?? null,
     followUpCount: followUpCount ?? prev.followUpCount ?? 0,
     lastFollowUpAt: lastFollowUpAt ?? prev.lastFollowUpAt ?? null,
+    dealValue: dealValue ?? prev.dealValue ?? 0,
     updatedAt: new Date().toISOString(),
   }
   map[id] = next
@@ -296,6 +297,8 @@ export function funnelAnalytics() {
     lost: count('lost'),
     paused: count('paused'),
     followUpsDue: listDueFollowUps(new Date(), 10000).length,
+    pipelineValue: crm.filter((x) => ['qualified','proposal'].includes(x.status)).reduce((sum, x) => sum + Number(x.dealValue || 0), 0),
+    wonRevenue: crm.filter((x) => x.status === 'won').reduce((sum, x) => sum + Number(x.dealValue || 0), 0),
     replyRate: contacted ? Math.round((replied / contacted) * 1000) / 10 : 0,
     winRate: contacted ? Math.round((count('won') / contacted) * 1000) / 10 : 0,
   }
