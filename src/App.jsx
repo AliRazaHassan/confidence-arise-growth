@@ -1013,6 +1013,49 @@ function FindView({ config, onSent }) {
   )
 }
 
+function Concierge() {
+  const [open, setOpen] = useState(false)
+  const [message, setMessage] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [chat, setChat] = useState([{ role: 'assistant', text: 'I track your leads, replies, follow-ups and pipeline. Ask me what needs attention.' }])
+  const [tasks, setTasks] = useState([])
+
+  useEffect(() => {
+    fetch('/api/concierge/snapshot', { credentials: 'include' })
+      .then((r) => r.json()).then((d) => setTasks(d.tasks || [])).catch(() => {})
+  }, [])
+
+  async function ask(text) {
+    const q = String(text || message).trim()
+    if (!q || busy) return
+    setMessage('')
+    setChat((x) => [...x, { role: 'user', text: q }])
+    setBusy(true)
+    try {
+      const res = await fetch('/api/concierge/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ message: q }) })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Concierge unavailable')
+      setTasks(data.tasks || [])
+      setChat((x) => [...x, { role: 'assistant', text: data.answer }])
+    } catch (err) {
+      setChat((x) => [...x, { role: 'assistant', text: err.message }])
+    } finally { setBusy(false) }
+  }
+
+  return <>
+    <button type="button" className="concierge-fab" onClick={() => setOpen((x) => !x)} aria-label="Open AI concierge">AI</button>
+    {open ? <aside className="concierge-panel">
+      <div className="concierge-head"><div><strong>AI Concierge</strong><span>Growth copilot</span></div><button className="btn-ghost tiny" onClick={() => setOpen(false)}>Close</button></div>
+      <div className="concierge-quick">
+        {['What should I do today?', 'Show hot leads', 'Follow-ups due?', 'Pipeline status'].map((q) => <button type="button" key={q} onClick={() => ask(q)}>{q}</button>)}
+      </div>
+      {tasks.length ? <div className="concierge-tasks"><strong>Priority queue</strong>{tasks.slice(0,3).map((t,i) => <div className="concierge-task" key={t.leadId || i}><span>{t.priority}</span><div><b>{t.title}</b><small>{t.detail}</small></div></div>)}</div> : null}
+      <div className="concierge-chat">{chat.map((m,i) => <div key={i} className={'concierge-msg ' + m.role}>{m.text}</div>)}{busy ? <div className="concierge-msg assistant">Checking your workspace…</div> : null}</div>
+      <form className="concierge-input" onSubmit={(e) => { e.preventDefault(); ask() }}><input value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Ask about leads, replies, revenue…" /><button className="btn-primary tiny" disabled={busy}>Ask</button></form>
+    </aside> : null}
+  </>
+}
+
 export default function App() {
   const [user, setUser] = useState(null)
   const [authChecked, setAuthChecked] = useState(false)
@@ -1100,6 +1143,7 @@ export default function App() {
           <HistoryView key={historyKey} />
         )}
       </main>
+      <Concierge />
     </div>
   )
 }
