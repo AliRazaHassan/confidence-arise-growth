@@ -8,7 +8,7 @@ import { sendEmail, sendWhatsApp, testEmailConnection, testWhatsAppConnection } 
 import { getWhatsAppSettings, saveWhatsAppSettings } from './src/whatsappSettings.js'
 import { getEmailSettings, saveEmailSettings, providerDefaults } from './src/emailSettings.js'
 import { syncEmailReplies } from './src/emailReplies.js'
-import { answerConcierge, conciergeSnapshot } from './src/concierge.js'
+import { answerConciergeAI, conciergeSnapshot, testConciergeAI } from './src/concierge.js'
 import { buildFollowUp, defaultNextFollowUpAt } from './src/followups.js'
 import {
   defaultEmailBody,
@@ -206,9 +206,13 @@ app.get('/api/concierge/snapshot', requireAuth, (_req, res) => {
   res.json(conciergeSnapshot())
 })
 
-app.post('/api/concierge/chat', requireAuth, (req, res) => {
+app.post('/api/concierge/chat', requireAuth, async (req, res) => {
   const message = String(req.body?.message || '').trim()
-  res.json(answerConcierge(message))
+  res.json(await answerConciergeAI(message))
+})
+
+app.get('/api/concierge/ai-status', requireAuth, async (_req, res) => {
+  res.json(await testConciergeAI())
 })
 
 app.get('/api/states', requireAuth, (_req, res) => {
