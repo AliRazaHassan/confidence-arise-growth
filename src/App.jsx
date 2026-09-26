@@ -5,6 +5,7 @@ import { applyLeadFilters } from './search.js'
 const NAV = [
   { id: 'find', label: 'Find leads' },
   { id: 'history', label: 'History' },
+  { id: 'settings', label: 'Settings' },
 ]
 
 function fmtDate(iso) {
@@ -355,6 +356,78 @@ function HistoryView() {
           <button type="button" className="btn-primary followup-send" onClick={sendFollowUp}>Send follow-up</button>
         </aside>
       ) : null}
+    </div>
+  )
+}
+
+function SettingsView({ config, onSaved }) {
+  const account = config?.emailAccount
+  const [form, setForm] = useState({
+    provider: account?.provider || 'gmail',
+    email: account?.email || '',
+    fromName: account?.fromName || 'Confidence Arise',
+    password: '',
+    host: account?.host || '',
+    port: account?.port || 587,
+    secure: Boolean(account?.secure),
+  })
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+
+  function field(name, value) { setForm((x) => ({ ...x, [name]: value })) }
+
+  async function save(e) {
+    e.preventDefault()
+    setBusy(true)
+    setMessage('')
+    try {
+      const res = await fetch('/api/settings/email', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(form),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not connect email')
+      setForm((x) => ({ ...x, password: '' }))
+      setMessage('Email connected and SMTP login verified.')
+      onSaved?.()
+    } catch (err) {
+      setMessage(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const custom = form.provider === 'custom'
+  return (
+    <div className="view settings-view">
+      <header className="view-head"><div><h2>Settings</h2><p>Connect the mailbox used for outreach and follow-ups.</p></div></header>
+      <form className="settings-card" onSubmit={save}>
+        <h3>Email account</h3>
+        <p className="muted">Credentials are stored encrypted on the server and the password is never returned to this browser.</p>
+        <label>Provider
+          <select value={form.provider} onChange={(e) => field('provider', e.target.value)}>
+            <option value="gmail">Gmail / Google Workspace</option>
+            <option value="outlook">Outlook / Microsoft 365</option>
+            <option value="custom">Custom SMTP</option>
+          </select>
+        </label>
+        <label>Sender name<input value={form.fromName} onChange={(e) => field('fromName', e.target.value)} /></label>
+        <label>Email<input type="email" required value={form.email} onChange={(e) => field('email', e.target.value)} placeholder="you@company.com" /></label>
+        <label>{form.provider === 'gmail' ? 'Google App Password' : 'SMTP password'}
+          <input type="password" value={form.password} onChange={(e) => field('password', e.target.value)} placeholder={account?.configured ? 'Leave blank to keep current password' : 'Required'} />
+        </label>
+        {custom ? <>
+          <label>SMTP host<input required value={form.host} onChange={(e) => field('host', e.target.value)} placeholder="smtp.example.com" /></label>
+          <label>SMTP port<input type="number" required value={form.port} onChange={(e) => field('port', Number(e.target.value))} /></label>
+          <label className="check"><input type="checkbox" checked={form.secure} onChange={(e) => field('secure', e.target.checked)} />Use TLS/SSL immediately</label>
+        </> : null}
+        {form.provider === 'gmail' ? <p className="cell-sub">Gmail requires 2-Step Verification and an App Password; do not enter your normal Google password.</p> : null}
+        {message ? <p className={message.startsWith('Email connected') ? 'success-line' : 'error'}>{message}</p> : null}
+        <button className="btn-primary" type="submit" disabled={busy}>{busy ? 'Testing connection…' : account?.configured ? 'Test & Update' : 'Test & Connect'}</button>
+        {account?.configured ? <p className="cell-sub">Currently connected: {account.email} via {account.provider}</p> : null}
+      </form>
     </div>
   )
 }
@@ -921,10 +994,10 @@ export default function App() {
         {nav === 'find' ? (
           <FindView
             config={config}
-            onSent={() => {
-              setHistoryKey((k) => k + 1)
-            }}
+            onSent={() => setHistoryKey((k) => k + 1)}
           />
+        ) : nav === 'settings' ? (
+          <SettingsView config={config} onSaved={() => setHistoryKey((k) => k + 1)} />
         ) : (
           <HistoryView key={historyKey} />
         )}
