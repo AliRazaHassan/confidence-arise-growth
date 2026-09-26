@@ -839,7 +839,8 @@ function FindView({ config, onSent }) {
                   <td>{b.phone || '—'}</td>
                   <td>
                     <button type="button" className="btn-ghost tiny" onClick={() => analyzeOne(b)} disabled={analyzing}>Analyze</button>
-                    <button type="button" className="btn-ghost tiny" onClick={() => openCRM(b)}>CRM</button>\n                    <button type="button" className="btn-ghost tiny" onClick={() => previewOne(b)}>
+                    <button type="button" className="btn-ghost tiny" onClick={() => openCRM(b)}>CRM</button>
+                    <button type="button" className="btn-ghost tiny" onClick={() => previewOne(b)}>
                       Preview
                     </button>
                   </td>
