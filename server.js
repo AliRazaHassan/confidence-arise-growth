@@ -100,9 +100,19 @@ app.post('/api/settings/email/test', requireAuth, async (req, res) => {
 
 app.put('/api/settings/email', requireAuth, async (req, res) => {
   try {
-    const account = saveEmailSettings(req.body || {})
-    const secret = getEmailSettings({ includeSecret: true })
-    await testEmailConnection(secret)
+    const input = req.body || {}
+    const existing = getEmailSettings({ includeSecret: true })
+    const defaults = providerDefaults(input.provider)
+    const candidate = {
+      email: String(input.email || '').trim(),
+      password: String(input.password || existing?.password || ''),
+      host: defaults?.host || String(input.host || '').trim(),
+      port: Number(defaults?.port || input.port || 587),
+      secure: defaults ? defaults.secure : Boolean(input.secure),
+    }
+    if (!candidate.email || !candidate.password) return res.status(400).json({ error: 'Email and password are required.' })
+    await testEmailConnection(candidate)
+    const account = saveEmailSettings({ ...input, password: input.password || existing?.password })
     res.json({ ok: true, account })
   } catch (err) {
     res.status(400).json({ error: err.message || 'Could not save email account.' })
