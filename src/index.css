@@ -691,3 +691,8 @@ tr.row-on {
 .concierge-input { display: grid; grid-template-columns: 1fr auto; gap: .45rem; padding: .7rem; border-top: 1px solid var(--line); }
 .concierge-input input { min-width: 0; border: 1px solid var(--line); border-radius: 9px; padding: .65rem; background: #fff; }
 @media (max-width: 600px) { .concierge-fab { right: 14px; bottom: 14px; } .concierge-panel { right: 14px; bottom: 78px; } }
+
+.robot-icon { font-size: 1.55rem; line-height: 1; filter: saturate(.85); }
+.concierge-title { display: flex !important; grid-template-columns: auto 1fr; align-items: center; gap: .6rem !important; }
+.robot-avatar { width: 36px; height: 36px; display: grid; place-items: center; flex: 0 0 36px; border-radius: 11px; background: var(--brand-soft); font-size: 1.25rem; }
+.concierge-title > div { display: grid; gap: .1rem; }
