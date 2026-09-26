@@ -1,48 +1,59 @@
+import nodemailer from 'nodemailer'
 import { toWhatsAppDigits } from './templates.js'
+import { getEmailSettings } from './emailSettings.js'
 
 /**
  * Send email via Resend API
  * https://resend.com/docs/api-reference/emails/send-email
  */
 export async function sendEmail({ to, subject, text, html }) {
+  const smtp = getEmailSettings({ includeSecret: true })
+  if (smtp?.configured && smtp.password) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: smtp.host,
+        port: smtp.port,
+        secure: smtp.secure,
+        auth: { user: smtp.email, pass: smtp.password },
+      })
+      const info = await transporter.sendMail({
+        from: `${smtp.fromName} <${smtp.email}>`,
+        to,
+        subject,
+        text,
+        html: html || undefined,
+      })
+      return { ok: true, id: info.messageId, provider: `smtp-${smtp.provider}` }
+    } catch (err) {
+      return { ok: false, error: err.message || 'SMTP send failed', provider: `smtp-${smtp.provider}` }
+    }
+  }
+
   const apiKey = process.env.RESEND_API_KEY
   const fromEmail = process.env.FROM_EMAIL || 'hello@confidencearise.com'
   const fromName = process.env.FROM_NAME || 'Confidence Arise'
 
-  if (!apiKey) {
-    return {
-      ok: false,
-      dryRun: true,
-      error: 'RESEND_API_KEY not set — email not sent (dry run).',
-      preview: { to, subject, text },
-    }
-  }
+  if (!apiKey) return { ok: false, dryRun: true, error: 'No email account configured.', preview: { to, subject, text } }
 
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: `${fromName} <${fromEmail}>`,
-      to: [to],
-      subject,
-      text,
-      html: html || undefined,
-    }),
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: [to], subject, text, html: html || undefined }),
   })
-
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) {
-    return {
-      ok: false,
-      error: data.message || data.error || `Resend ${res.status}`,
-      raw: data,
-    }
-  }
-
+  if (!res.ok) return { ok: false, error: data.message || data.error || `Resend ${res.status}`, raw: data }
   return { ok: true, id: data.id, provider: 'resend' }
+}
+
+export async function testEmailConnection(settings) {
+  const transporter = nodemailer.createTransport({
+    host: settings.host,
+    port: settings.port,
+    secure: settings.secure,
+    auth: { user: settings.email, pass: settings.password },
+  })
+  await transporter.verify()
+  return { ok: true }
 }
 
 /**
