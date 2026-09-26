@@ -18,29 +18,29 @@ function normalizeWebsite(raw) {
   if (!raw) return null
   const value = String(raw).trim()
   if (!value) return null
-  if (!/^https?:\\/\\//i.test(value)) return `https://${value}`
+  if (!/^https?:\/\//i.test(value)) return `https://${value}`
   return value
 }
 
 function cleanText(value) {
-  return String(value || '').replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ').trim()
+  return String(value || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
 function normalizePhone(raw) {
   if (!raw) return null
-  const value = String(raw).replace(/[^+\\d() .-]/g, ' ').replace(/\\s+/g, ' ').trim()
+  const value = String(raw).replace(/[^+\d() .-]/g, ' ').replace(/\s+/g, ' ').trim()
   return value || null
 }
 
 function normalizeEmail(raw) {
   if (!raw) return null
-  const match = String(raw).match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/i)
+  const match = String(raw).match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)
   return match ? match[0].toLowerCase() : null
 }
 
 function domainOf(url) {
   try {
-    return new URL(url).hostname.replace(/^www\\./i, '').toLowerCase()
+    return new URL(url).hostname.replace(/^www\./i, '').toLowerCase()
   } catch {
     return ''
   }
@@ -79,7 +79,7 @@ async function googleSearch(query, count = 10) {
   if (!res.ok) return []
   const data = await res.json()
   return (data.items || []).map((x) => ({
-    name: cleanText(x.title).replace(/ \\|.*$/, ''),
+    name: cleanText(x.title).replace(/ \|.*$/, ''),
     website: safeHttpUrl(x.link),
     snippet: cleanText(x.snippet),
     source: 'google',
@@ -96,7 +96,7 @@ async function bingSearch(query, count = 10) {
   if (!res.ok) return []
   const data = await res.json()
   return (data.webPages?.value || []).map((x) => ({
-    name: cleanText(x.name).replace(/ \\|.*$/, ''),
+    name: cleanText(x.name).replace(/ \|.*$/, ''),
     website: safeHttpUrl(x.url),
     snippet: cleanText(x.snippet),
     source: 'bing',
@@ -104,14 +104,14 @@ async function bingSearch(query, count = 10) {
 }
 
 function extractSocialLinks(html) {
-  const matches = html.match(/https?:\\/\\/[^"'\\s<>]+/gi) || []
-  return [...new Set(matches.filter((url) => /facebook\\.com|instagram\\.com|linkedin\\.com|tiktok\\.com|youtube\\.com/i.test(url)))].slice(0, 8)
+  const matches = html.match(/https?:\/\/[^"'\s<>]+/gi) || []
+  return [...new Set(matches.filter((url) => /facebook\.com|instagram\.com|linkedin\.com|tiktok\.com|youtube\.com/i.test(url)))].slice(0, 8)
 }
 
 function extractContact(html) {
-  const emails = [...new Set((html.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi) || []).map((x) => x.toLowerCase()))]
-    .filter((x) => !/example\\.com|noreply|no-reply|donotreply/i.test(x))
-  const phones = [...new Set((html.match(/(?:\\+?1[ .-]?)?(?:\\(\\d{3}\\)|\\d{3})[ .-]?\\d{3}[ .-]?\\d{4}/g) || []).map(normalizePhone).filter(Boolean))]
+  const emails = [...new Set((html.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || []).map((x) => x.toLowerCase()))]
+    .filter((x) => !/example\.com|noreply|no-reply|donotreply/i.test(x))
+  const phones = [...new Set((html.match(/(?:\+?1[ .-]?)?(?:\(\d{3}\)|\d{3})[ .-]?\d{3}[ .-]?\d{4}/g) || []).map(normalizePhone).filter(Boolean))]
   return { email: emails[0] || null, phone: phones[0] || null, socialLinks: extractSocialLinks(html) }
 }
 
