@@ -12,6 +12,7 @@ const CRM_FILE = path.join(DATA_DIR, 'crm.json')
 const MAX_SEARCHES = 100
 const MAX_SUBMISSIONS = 500
 const MAX_LEADS = 2000
+const TERMINAL_CRM_STATUSES = new Set(['won', 'lost', 'paused'])
 
 function ensureDir() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true })
@@ -99,7 +100,7 @@ export function recordBatchSubmissions(items) {
   return items.map((item) => recordSubmission(item))
 }
 
-export function updateLeadCRM({ id, status, notes, nextFollowUpAt, outcome }) {
+export function updateLeadCRM({ id, status, notes, nextFollowUpAt, outcome, followUpCount, lastFollowUpAt }) {
   if (!id) return null
   const map = readJson(CRM_FILE, {})
   const prev = map[id] || {}
@@ -110,11 +111,51 @@ export function updateLeadCRM({ id, status, notes, nextFollowUpAt, outcome }) {
     notes: notes ?? prev.notes ?? '',
     nextFollowUpAt: nextFollowUpAt ?? prev.nextFollowUpAt ?? null,
     outcome: outcome ?? prev.outcome ?? null,
+    followUpCount: followUpCount ?? prev.followUpCount ?? 0,
+    lastFollowUpAt: lastFollowUpAt ?? prev.lastFollowUpAt ?? null,
     updatedAt: new Date().toISOString(),
   }
   map[id] = next
   writeJson(CRM_FILE, map)
   return next
+}
+
+export function recordFollowUp(id, { nextFollowUpAt = null, final = false } = {}) {
+  if (!id) return null
+  const map = readJson(CRM_FILE, {})
+  const prev = map[id] || { id, status: 'contacted' }
+  const count = Number(prev.followUpCount || 0) + 1
+  const now = new Date().toISOString()
+  const next = {
+    ...prev,
+    id,
+    status: prev.status === 'new' ? 'contacted' : (prev.status || 'contacted'),
+    followUpCount: count,
+    lastFollowUpAt: now,
+    nextFollowUpAt: final || count >= 3 ? null : nextFollowUpAt,
+    followUpComplete: Boolean(final || count >= 3),
+    updatedAt: now,
+  }
+  map[id] = next
+  writeJson(CRM_FILE, map)
+  return next
+}
+
+export function listDueFollowUps(now = new Date(), limit = 100) {
+  const leads = readJson(LEADS_FILE, {})
+  const crm = readJson(CRM_FILE, {})
+  const nowMs = new Date(now).getTime()
+  return Object.values(leads)
+    .map((lead) => ({ ...lead, crm: crm[lead.id] || null }))
+    .filter((lead) => {
+      const row = lead.crm
+      if (!row || TERMINAL_CRM_STATUSES.has(row.status) || row.followUpComplete) return false
+      if (!['contacted', 'replied', 'qualified', 'proposal'].includes(row.status)) return false
+      if (!row.nextFollowUpAt) return false
+      return new Date(row.nextFollowUpAt).getTime() <= nowMs
+    })
+    .sort((a, b) => String(a.crm.nextFollowUpAt).localeCompare(String(b.crm.nextFollowUpAt)))
+    .slice(0, limit)
 }
 
 export function getLeadCRM(id) {
