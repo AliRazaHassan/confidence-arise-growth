@@ -78,7 +78,17 @@ export function recordSubmission(entry) {
     const crm = readJson(CRM_FILE, {})
     const prevCrm = crm[leadId] || {}
     if (entry.status === 'sent') {
-      crm[leadId] = { ...prevCrm, id: leadId, status: prevCrm.status && prevCrm.status !== 'new' ? prevCrm.status : 'contacted', updatedAt: new Date().toISOString() }
+      const contactedAt = new Date()
+      const firstFollowUp = new Date(contactedAt)
+      firstFollowUp.setUTCDate(firstFollowUp.getUTCDate() + 3)
+      crm[leadId] = {
+        ...prevCrm,
+        id: leadId,
+        status: prevCrm.status && prevCrm.status !== 'new' ? prevCrm.status : 'contacted',
+        followUpCount: prevCrm.followUpCount || 0,
+        nextFollowUpAt: prevCrm.nextFollowUpAt || firstFollowUp.toISOString(),
+        updatedAt: contactedAt.toISOString(),
+      }
       writeJson(CRM_FILE, crm)
     }
     upsertLead({
