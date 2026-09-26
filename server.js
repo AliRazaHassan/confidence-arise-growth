@@ -4,7 +4,8 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { searchBusinesses } from './src/search.js'
 import { analyzeBusiness, auditWebsite } from './src/intelligence.js'
-import { sendEmail, sendWhatsApp } from './src/outreach.js'
+import { sendEmail, sendWhatsApp, testEmailConnection } from './src/outreach.js'
+import { getEmailSettings, saveEmailSettings, providerDefaults } from './src/emailSettings.js'
 import { buildFollowUp, defaultNextFollowUpAt } from './src/followups.js'
 import {
   defaultEmailBody,
@@ -43,7 +44,8 @@ function siteConfig() {
     siteUrl: process.env.SITE_URL || 'https://confidencearise.com',
     fromName: process.env.FROM_NAME || 'Confidence Arise',
     fromEmail: process.env.FROM_EMAIL || 'hello@confidencearise.com',
-    emailReady: Boolean(process.env.RESEND_API_KEY && process.env.RESEND_API_KEY !== 'pending'),
+    emailReady: Boolean(getEmailSettings()?.configured || (process.env.RESEND_API_KEY && process.env.RESEND_API_KEY !== 'pending')),
+    emailAccount: getEmailSettings(),
     whatsappReady: Boolean(
       process.env.WHATSAPP_TOKEN &&
         process.env.WHATSAPP_TOKEN !== 'pending' &&
@@ -71,6 +73,40 @@ app.get('/api/health', (_req, res) => {
 
 app.get('/api/config', requireAuth, (_req, res) => {
   res.json({ ...siteConfig(), history: historySummary() })
+})
+
+app.get('/api/settings/email', requireAuth, (_req, res) => {
+  res.json({ account: getEmailSettings() })
+})
+
+app.post('/api/settings/email/test', requireAuth, async (req, res) => {
+  try {
+    const input = req.body || {}
+    const defaults = providerDefaults(input.provider)
+    const settings = {
+      email: String(input.email || '').trim(),
+      password: String(input.password || ''),
+      host: defaults?.host || String(input.host || '').trim(),
+      port: Number(defaults?.port || input.port || 587),
+      secure: defaults ? defaults.secure : Boolean(input.secure),
+    }
+    if (!settings.email || !settings.password) return res.status(400).json({ error: 'Email and password are required for testing.' })
+    await testEmailConnection(settings)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Email connection failed.' })
+  }
+})
+
+app.put('/api/settings/email', requireAuth, async (req, res) => {
+  try {
+    const account = saveEmailSettings(req.body || {})
+    const secret = getEmailSettings({ includeSecret: true })
+    await testEmailConnection(secret)
+    res.json({ ok: true, account })
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Could not save email account.' })
+  }
 })
 
 app.get('/api/states', requireAuth, (_req, res) => {
