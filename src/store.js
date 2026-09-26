@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { analyzeReply, suggestedReply } from './replyIntelligence.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = path.join(__dirname, '..', 'data')
@@ -252,8 +253,14 @@ export function classifyReplyText(text) {
 export function recordInboundReply({ businessId, channel, from, text, externalId = null }) {
   const rows = readJson(REPLIES_FILE, [])
   if (externalId && rows.some((row) => row.externalId === externalId)) return rows.find((row) => row.externalId === externalId)
-  const classification = classifyReplyText(text)
-  const entry = { id: id(), at: new Date().toISOString(), businessId, channel, from, text, externalId, classification }
+  const lead = businessId ? readJson(LEADS_FILE, {})[businessId] : null
+  const intelligence = analyzeReply(text)
+  const classification = intelligence.classification
+  const entry = {
+    id: id(), at: new Date().toISOString(), businessId, channel, from, text, externalId,
+    classification, objection: intelligence.objection, sentiment: intelligence.sentiment,
+    nextAction: intelligence.nextAction, suggestedReply: suggestedReply(lead, intelligence),
+  }
   rows.unshift(entry)
   writeJson(REPLIES_FILE, rows.slice(0, 1000))
   if (businessId) {
@@ -268,7 +275,10 @@ export function recordInboundReply({ businessId, channel, from, text, externalId
       lastReplyAt: entry.at,
       lastReplyText: text,
       replyClassification: classification,
-      nextFollowUpAt: stopped ? null : prev.nextFollowUpAt || null,
+      objection: intelligence.objection,
+      nextAction: intelligence.nextAction,
+      suggestedReply: entry.suggestedReply,
+      nextFollowUpAt: stopped ? null : null,
       followUpComplete: stopped ? true : Boolean(prev.followUpComplete),
       updatedAt: entry.at,
     }
