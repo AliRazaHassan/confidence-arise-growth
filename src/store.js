@@ -7,6 +7,7 @@ const DATA_DIR = path.join(__dirname, '..', 'data')
 const SEARCHES_FILE = path.join(DATA_DIR, 'searches.json')
 const SUBMISSIONS_FILE = path.join(DATA_DIR, 'submissions.json')
 const LEADS_FILE = path.join(DATA_DIR, 'leads.json')
+const CRM_FILE = path.join(DATA_DIR, 'crm.json')
 
 const MAX_SEARCHES = 100
 const MAX_SUBMISSIONS = 500
@@ -91,9 +92,40 @@ export function recordBatchSubmissions(items) {
   return items.map((item) => recordSubmission(item))
 }
 
+export function updateLeadCRM({ id, status, notes, nextFollowUpAt, outcome }) {
+  if (!id) return null
+  const map = readJson(CRM_FILE, {})
+  const prev = map[id] || {}
+  const next = {
+    ...prev,
+    id,
+    status: status || prev.status || 'new',
+    notes: notes ?? prev.notes ?? '',
+    nextFollowUpAt: nextFollowUpAt ?? prev.nextFollowUpAt ?? null,
+    outcome: outcome ?? prev.outcome ?? null,
+    updatedAt: new Date().toISOString(),
+  }
+  map[id] = next
+  writeJson(CRM_FILE, map)
+  return next
+}
+
+export function getLeadCRM(id) {
+  if (!id) return null
+  return readJson(CRM_FILE, {})[id] || null
+}
+
+export function listLeadCRM(limit = 500) {
+  return Object.values(readJson(CRM_FILE, {}))
+    .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+    .slice(0, limit)
+}
+
 export function listLeads(limit = 200) {
   const map = readJson(LEADS_FILE, {})
+  const crm = readJson(CRM_FILE, {})
   return Object.values(map)
+    .map((lead) => ({ ...lead, crm: crm[lead.id] || null }))
     .sort((a, b) => String(b.lastContactAt || '').localeCompare(String(a.lastContactAt || '')))
     .slice(0, limit)
 }
