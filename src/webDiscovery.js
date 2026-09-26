@@ -177,9 +177,19 @@ export async function discoverWebBusinesses({ place, city, state, categories = O
   const gridQueries = queries.flatMap((item) => points.slice(0, 3).map((p) => ({ ...item, query: `${item.query} near ${p.lat.toFixed(3)},${p.lon.toFixed(3)}` })))
   const cappedQueries = gridQueries.slice(0, 18)
 
+  const googleJobs = cappedQueries.map((q) =>
+    googleSearch(q.query, 10).then((rows) =>
+      rows.map((x) => ({ ...x, category: q.category })),
+    ),
+  )
+  const bingJobs = cappedQueries.map((q) =>
+    bingSearch(q.query, 10).then((rows) =>
+      rows.map((x) => ({ ...x, category: q.category })),
+    ),
+  )
   const [google, bing] = await Promise.all([
-    Promise.all(cappedQueries.map((q) => googleSearch(q.query, 10).then((rows) => rows.map((x) => ({ ...x, category: q.category })))),
-    Promise.all(cappedQueries.map((q) => bingSearch(q.query, 10).then((rows) => rows.map((x) => ({ ...x, category: q.category })))),
+    Promise.all(googleJobs),
+    Promise.all(bingJobs),
   ])
 
   let results = [...google.flat(), ...bing.flat()]
