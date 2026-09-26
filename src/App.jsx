@@ -98,6 +98,7 @@ function HistoryView() {
   const [submissions, setSubmissions] = useState([])
   const [leads, setLeads] = useState([])
   const [followUps, setFollowUps] = useState([])
+  const [replies, setReplies] = useState([])
   const [followUpPreview, setFollowUpPreview] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -106,18 +107,20 @@ function HistoryView() {
     setLoading(true)
     setError('')
     try {
-      const [s, sub, l, f] = await Promise.all([
+      const [s, sub, l, f, r] = await Promise.all([
         fetch('/api/history/searches?limit=50', { credentials: 'include' }).then((r) => r.json()),
         fetch('/api/history/submissions?limit=100', { credentials: 'include' }).then((r) =>
           r.json(),
         ),
         fetch('/api/history/leads?limit=200', { credentials: 'include' }).then((r) => r.json()),
         fetch('/api/crm/follow-ups?limit=100', { credentials: 'include' }).then((r) => r.json()),
+        fetch('/api/crm/replies?limit=100', { credentials: 'include' }).then((r) => r.json()),
       ])
       setSearches(s.items || [])
       setSubmissions(sub.items || [])
       setLeads(l.items || [])
       setFollowUps(f.items || [])
+      setReplies(r.items || [])
     } catch (err) {
       setError(err.message || 'Could not load history')
     } finally {
@@ -128,6 +131,17 @@ function HistoryView() {
   useEffect(() => {
     load()
   }, [load])
+
+  async function syncEmailRepliesNow() {
+    setError('')
+    try {
+      const res = await fetch('/api/crm/replies/sync-email', { method: 'POST', credentials: 'include' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Email sync failed')
+      setReplies(data.items || [])
+      setTab('replies')
+    } catch (err) { setError(err.message) }
+  }
 
   async function sendFollowUp() {
     if (!followUpPreview?.lead) return
@@ -179,14 +193,13 @@ function HistoryView() {
           <h2>History</h2>
           <p>Previous searches, outreach submissions, and contacted leads.</p>
         </div>
-        <button type="button" className="btn-ghost" onClick={load} disabled={loading}>
-          Refresh
-        </button>
+        <div className="head-actions"><button type="button" className="btn-ghost" onClick={syncEmailRepliesNow}>Sync email replies</button><button type="button" className="btn-ghost" onClick={load} disabled={loading}>Refresh</button></div>
       </header>
 
       <div className="tabs" role="tablist">
         {[
           { id: 'followups', label: `Due follow-ups (${followUps.length})` },
+          { id: 'replies', label: `Replies (${replies.length})` },
           { id: 'submissions', label: `Submissions (${submissions.length})` },
           { id: 'leads', label: `Leads (${leads.length})` },
           { id: 'searches', label: `Searches (${searches.length})` },
@@ -221,6 +234,22 @@ function HistoryView() {
                 </tr>
               )) : <tr><td colSpan={5} className="empty-row">No follow-ups are due right now.</td></tr>}
             </tbody>
+          </table>
+        </div>
+      ) : null}
+
+      {!loading && tab === 'replies' ? (
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>When</th><th>Channel</th><th>From</th><th>Intent</th><th>Reply</th><th>Next action</th></tr></thead>
+            <tbody>{replies.length ? replies.map((row) => (
+              <tr key={row.id}>
+                <td>{fmtDate(row.at)}</td><td>{row.channel}</td><td>{row.from || '—'}</td>
+                <td><strong>{String(row.classification || 'unknown').replaceAll('_',' ')}</strong>{row.objection ? <div className="cell-sub">Objection: {row.objection}</div> : null}</td>
+                <td><div className="reply-text">{row.text}</div>{row.suggestedReply ? <div className="reply-suggestion"><strong>Suggested:</strong> {row.suggestedReply}</div> : null}</td>
+                <td>{row.nextAction || 'Review manually'}</td>
+              </tr>
+            )) : <tr><td colSpan={6} className="empty-row">No inbound replies recorded yet.</td></tr>}</tbody>
           </table>
         </div>
       ) : null}
