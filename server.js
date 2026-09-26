@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url'
 import { searchBusinesses } from './src/search.js'
 import { analyzeBusiness, auditWebsite } from './src/intelligence.js'
 import { sendEmail, sendWhatsApp } from './src/outreach.js'
+import { buildFollowUp, defaultNextFollowUpAt } from './src/followups.js'
 import {
   defaultEmailBody,
   defaultEmailSubject,
@@ -23,6 +24,8 @@ import {
   updateLeadCRM,
   getLeadCRM,
   listLeadCRM,
+  listDueFollowUps,
+  recordFollowUp,
 } from './src/store.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -120,6 +123,67 @@ app.patch('/api/crm/lead/:id', requireAuth, (req, res) => {
     outcome,
   })
   res.json({ crm })
+})
+
+app.get('/api/crm/follow-ups', requireAuth, (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 100, 200)
+  res.json({ items: listDueFollowUps(new Date(), limit) })
+})
+
+app.post('/api/crm/lead/:id/follow-up/preview', requireAuth, (req, res) => {
+  const { business } = req.body || {}
+  if (!business?.name) return res.status(400).json({ error: 'business required' })
+  const crm = getLeadCRM(req.params.id) || { id: req.params.id, status: 'contacted' }
+  const message = buildFollowUp(business, crm, siteConfig())
+  res.json({ crm, message })
+})
+
+app.post('/api/crm/lead/:id/follow-up/send', requireAuth, async (req, res) => {
+  const { business, channels = ['email', 'whatsapp'], dryRun = false } = req.body || {}
+  if (!business?.name) return res.status(400).json({ error: 'business required' })
+  const crm = getLeadCRM(req.params.id) || { id: req.params.id, status: 'contacted' }
+  if (['won', 'lost', 'paused'].includes(crm.status) || crm.followUpComplete) {
+    return res.status(409).json({ error: 'Follow-up sequence is stopped for this lead.' })
+  }
+
+  const cfg = siteConfig()
+  const message = buildFollowUp(business, crm, cfg)
+  const results = { email: null, whatsapp: null }
+
+  if (channels.includes('email')) {
+    if (!business.email) results.email = { ok: false, error: 'No email on this lead.' }
+    else if (dryRun) results.email = { ok: true, dryRun: true, preview: { to: business.email, subject: message.subject, text: message.email } }
+    else results.email = await sendEmail({ to: business.email, subject: message.subject, text: message.email })
+  }
+
+  if (channels.includes('whatsapp')) {
+    if (!business.phone) results.whatsapp = { ok: false, error: 'No phone on this lead.' }
+    else if (dryRun) results.whatsapp = { ok: true, dryRun: true, preview: { to: business.phone, text: message.whatsapp } }
+    else results.whatsapp = await sendWhatsApp({ phone: business.phone, text: message.whatsapp })
+  }
+
+  const status = submissionStatus(results)
+  const saved = recordSubmission({
+    businessId: business.id || req.params.id,
+    businessName: business.name,
+    email: business.email || null,
+    phone: business.phone || null,
+    address: business.address || null,
+    channels,
+    dryRun,
+    by: req.user?.email,
+    results,
+    status,
+    followUpStep: message.step,
+  })
+
+  let updatedCRM = crm
+  if (status === 'sent') {
+    const nextAt = message.final ? null : defaultNextFollowUpAt(new Date(), Number(crm.followUpCount || 0) + 1)
+    updatedCRM = recordFollowUp(req.params.id, { nextFollowUpAt: nextAt, final: message.final })
+  }
+
+  res.status(status === 'failed' ? 207 : 200).json({ status, results, submission: saved, crm: updatedCRM, message })
 })
 
 app.get('/api/businesses', requireAuth, async (req, res) => {
