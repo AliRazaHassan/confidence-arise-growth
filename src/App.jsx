@@ -303,6 +303,7 @@ function FindView({ config, onSent }) {
   const [analyzing, setAnalyzing] = useState(false)
   const [minScore, setMinScore] = useState(0)
   const [q, setQ] = useState('')
+  const [crm, setCrm] = useState(null)
 
   const stateCities = useMemo(() => citiesForState(state), [state])
 
@@ -387,6 +388,30 @@ function FindView({ config, onSent }) {
       setError(err.message || 'Analysis failed')
     } finally {
       setAnalyzing(false)
+    }
+  }
+
+  async function saveCRM(business, patch) {
+    const res = await fetch(`/api/crm/lead/${encodeURIComponent(business.id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(patch),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || 'CRM update failed')
+    setCrm(data.crm)
+  }
+
+  async function openCRM(business) {
+    setError('')
+    try {
+      const res = await fetch(`/api/crm/lead/${encodeURIComponent(business.id)}`, { credentials: 'include' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not load lead')
+      setCrm({ business, ...(data.crm || { id: business.id, status: 'new', notes: '', nextFollowUpAt: null, outcome: null }) })
+    } catch (err) {
+      setError(err.message)
     }
   }
 
@@ -662,7 +687,7 @@ function FindView({ config, onSent }) {
                   <td>{b.phone || '—'}</td>
                   <td>
                     <button type="button" className="btn-ghost tiny" onClick={() => analyzeOne(b)} disabled={analyzing}>Analyze</button>
-                    <button type="button" className="btn-ghost tiny" onClick={() => previewOne(b)}>
+                    <button type="button" className="btn-ghost tiny" onClick={() => openCRM(b)}>CRM</button>\n                    <button type="button" className="btn-ghost tiny" onClick={() => previewOne(b)}>
                       Preview
                     </button>
                   </td>
@@ -695,6 +720,29 @@ function FindView({ config, onSent }) {
           <h4>Score breakdown</h4>
           <div className="breakdown">{analysis.intelligence.breakdown.map((x) => <div className="breakdown-row" key={x.label}><span>{x.label}</span><strong>{x.points}/{x.max}</strong></div>)}</div>
           {analysis.audit?.reachable ? <p className="muted">Website audited successfully. Only observable page signals were used.</p> : analysis.business.website ? <p className="muted">Website audit unavailable: {analysis.audit?.error || 'unreachable'}.</p> : null}
+        </aside>
+      ) : null}
+
+      {crm ? (
+        <aside className="drawer crm-drawer">
+          <div className="drawer-head">
+            <div><h3>{crm.business?.name || 'Lead CRM'}</h3><div className="cell-sub">Pipeline memory</div></div>
+            <button type="button" className="btn-ghost tiny" onClick={() => setCrm(null)}>Close</button>
+          </div>
+          <label>Status
+            <select value={crm.status || 'new'} onChange={(e) => saveCRM(crm.business, { status: e.target.value })}>
+              {['new','contacted','replied','qualified','proposal','won','lost','paused'].map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </label>
+          <label>Next follow-up
+            <input type="datetime-local" value={crm.nextFollowUpAt ? String(crm.nextFollowUpAt).slice(0,16) : ''} onChange={(e) => saveCRM(crm.business, { nextFollowUpAt: e.target.value ? new Date(e.target.value).toISOString() : null })} />
+          </label>
+          <label>Outcome
+            <input value={crm.outcome || ''} placeholder="e.g. interested, no response" onChange={(e) => setCrm((x) => ({ ...x, outcome: e.target.value }))} onBlur={() => saveCRM(crm.business, { outcome: crm.outcome || null })} />
+          </label>
+          <label>Notes
+            <textarea rows="5" value={crm.notes || ''} placeholder="Conversation notes, objections, requirements…" onChange={(e) => setCrm((x) => ({ ...x, notes: e.target.value }))} onBlur={() => saveCRM(crm.business, { notes: crm.notes || '' })} />
+          </label>
         </aside>
       ) : null}
 
