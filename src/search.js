@@ -1,3 +1,4 @@
+import { baselineBusinessAnalysis } from './intelligence.js'
 import { cityCoords, stateName, COUNTRY } from './usa.js'
 
 const OVERPASS_ENDPOINTS = [
@@ -191,7 +192,12 @@ function elementToBusiness(el) {
     lat: el.lat ?? el.center?.lat ?? null,
     lon: el.lon ?? el.center?.lon ?? null,
   }
-  business.score = leadScore(business)
+  business.legacyScore = leadScore(business)
+  business.intelligence = baselineBusinessAnalysis(business)
+  business.opportunityScore = business.intelligence.opportunityScore
+  business.confidenceScore = business.intelligence.confidenceScore
+  business.recommendedServices = business.intelligence.recommendedServices
+  business.opportunities = business.intelligence.reasoning
   return business
 }
 
@@ -385,7 +391,7 @@ export async function searchBusinesses({ state, city, postalCode }) {
   }
 
   const businesses = dedupe(elements.map(elementToBusiness)).sort((a, b) => {
-    const d = b.score - a.score
+    const d = b.opportunityScore - a.opportunityScore
     if (d) return d
     return a.name.localeCompare(b.name)
   })
