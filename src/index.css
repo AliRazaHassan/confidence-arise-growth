@@ -662,3 +662,11 @@ tr.row-on {
 }
 .settings-card h3 { margin: 0; font-family: var(--display); }
 .settings-card .btn-primary { width: fit-content; }
+
+.settings-view { display: grid; gap: 1rem; }
+.metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .8rem; margin-bottom: 1rem; }
+.metric-card { padding: 1rem; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); display: grid; gap: .35rem; }
+.metric-card span { color: var(--muted); font-size: .8rem; font-weight: 600; }
+.metric-card strong { font-family: var(--display); font-size: 1.8rem; color: var(--brand); }
+.funnel-card { margin-top: 1rem; }
+.funnel-row { display: flex; justify-content: space-between; padding: .65rem 0; border-bottom: 1px solid var(--line); }
