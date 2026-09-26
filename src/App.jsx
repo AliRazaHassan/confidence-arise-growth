@@ -3,6 +3,7 @@ import { US_STATES, citiesForState, CATEGORY_FILTERS } from './usa.js'
 import { applyLeadFilters } from './search.js'
 
 const NAV = [
+  { id: 'dashboard', label: 'Command Center' },
   { id: 'find', label: 'Find leads' },
   { id: 'history', label: 'History' },
   { id: 'settings', label: 'Settings' },
@@ -360,6 +361,27 @@ function HistoryView() {
   )
 }
 
+function DashboardView() {
+  const [stats, setStats] = useState(null)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    fetch('/api/analytics/funnel', { credentials: 'include' })
+      .then(async (r) => { const data = await r.json(); if (!r.ok) throw new Error(data.error || 'Could not load analytics'); return data })
+      .then(setStats).catch((e) => setError(e.message))
+  }, [])
+  const cards = stats ? [
+    ['Leads', stats.leads], ['Contacted', stats.contacted], ['Replies', stats.replied],
+    ['Qualified', stats.qualified], ['Proposals', stats.proposals], ['Won', stats.won],
+    ['Follow-ups due', stats.followUpsDue], ['Reply rate', `${stats.replyRate}%`], ['Win rate', `${stats.winRate}%`],
+  ] : []
+  return <div className="view">
+    <header className="view-head"><div><h2>Growth Command Center</h2><p>Live CRM funnel based only on stored outreach and reply activity.</p></div></header>
+    {error ? <p className="error">{error}</p> : null}
+    <div className="metric-grid">{cards.map(([label,value]) => <div className="metric-card" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
+    {stats ? <div className="settings-card funnel-card"><h3>Pipeline</h3><div className="funnel-row"><span>Contacted</span><strong>{stats.contacted}</strong></div><div className="funnel-row"><span>Replied</span><strong>{stats.replied}</strong></div><div className="funnel-row"><span>Qualified</span><strong>{stats.qualified}</strong></div><div className="funnel-row"><span>Proposal</span><strong>{stats.proposals}</strong></div><div className="funnel-row"><span>Won</span><strong>{stats.won}</strong></div></div> : <p className="muted">Loading metrics…</p>}
+  </div>
+}
+
 function SettingsView({ config, onSaved }) {
   const account = config?.emailAccount
   const [form, setForm] = useState({
@@ -371,8 +393,17 @@ function SettingsView({ config, onSaved }) {
     port: account?.port || 587,
     secure: Boolean(account?.secure),
   })
+  const wa = config?.whatsappAccount
+  const [waForm, setWaForm] = useState({
+    phoneNumberId: wa?.phoneNumberId || '',
+    businessAccountId: wa?.businessAccountId || '',
+    graphVersion: wa?.graphVersion || 'v21.0',
+    accessToken: '',
+  })
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [waBusy, setWaBusy] = useState(false)
+  const [waMessage, setWaMessage] = useState('')
 
   function field(name, value) { setForm((x) => ({ ...x, [name]: value })) }
 
@@ -397,6 +428,19 @@ function SettingsView({ config, onSaved }) {
     } finally {
       setBusy(false)
     }
+  }
+
+  async function saveWhatsApp(e) {
+    e.preventDefault()
+    setWaBusy(true); setWaMessage('')
+    try {
+      const res = await fetch('/api/settings/whatsapp', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(waForm) })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not connect WhatsApp')
+      setWaForm((x) => ({ ...x, accessToken: '' }))
+      setWaMessage('WhatsApp Cloud API connected and verified.')
+      onSaved?.()
+    } catch (err) { setWaMessage(err.message) } finally { setWaBusy(false) }
   }
 
   const custom = form.provider === 'custom'
@@ -427,6 +471,17 @@ function SettingsView({ config, onSaved }) {
         {message ? <p className={message.startsWith('Email connected') ? 'success-line' : 'error'}>{message}</p> : null}
         <button className="btn-primary" type="submit" disabled={busy}>{busy ? 'Testing connection…' : account?.configured ? 'Test & Update' : 'Test & Connect'}</button>
         {account?.configured ? <p className="cell-sub">Currently connected: {account.email} via {account.provider}</p> : null}
+      </form>
+      <form className="settings-card" onSubmit={saveWhatsApp}>
+        <h3>WhatsApp Business</h3>
+        <p className="muted">Connect Meta WhatsApp Cloud API. The access token is encrypted and never returned to the browser.</p>
+        <label>Phone Number ID<input required value={waForm.phoneNumberId} onChange={(e) => setWaForm((x) => ({ ...x, phoneNumberId: e.target.value }))} /></label>
+        <label>WhatsApp Business Account ID<input value={waForm.businessAccountId} onChange={(e) => setWaForm((x) => ({ ...x, businessAccountId: e.target.value }))} /></label>
+        <label>Access Token<input type="password" value={waForm.accessToken} onChange={(e) => setWaForm((x) => ({ ...x, accessToken: e.target.value }))} placeholder={wa?.configured ? 'Leave blank to keep current token' : 'Required'} /></label>
+        <label>Graph API Version<input value={waForm.graphVersion} onChange={(e) => setWaForm((x) => ({ ...x, graphVersion: e.target.value }))} /></label>
+        {waMessage ? <p className={waMessage.startsWith('WhatsApp Cloud') ? 'success-line' : 'error'}>{waMessage}</p> : null}
+        <button className="btn-primary" type="submit" disabled={waBusy}>{waBusy ? 'Testing connection…' : wa?.configured ? 'Test & Update WhatsApp' : 'Test & Connect WhatsApp'}</button>
+        {wa?.configured ? <><p className="cell-sub">Connected Phone Number ID: {wa.phoneNumberId}</p><p className="cell-sub">Webhook: /api/webhooks/whatsapp · Verify token: {wa.verifyToken}</p></> : null}
       </form>
     </div>
   )
@@ -921,7 +976,7 @@ function FindView({ config, onSent }) {
 export default function App() {
   const [user, setUser] = useState(null)
   const [authChecked, setAuthChecked] = useState(false)
-  const [nav, setNav] = useState('find')
+  const [nav, setNav] = useState('dashboard')
   const [config, setConfig] = useState(null)
   const [historyKey, setHistoryKey] = useState(0)
 
@@ -992,7 +1047,9 @@ export default function App() {
       </aside>
 
       <main className="main">
-        {nav === 'find' ? (
+        {nav === 'dashboard' ? (
+          <DashboardView />
+        ) : nav === 'find' ? (
           <FindView
             config={config}
             onSent={() => setHistoryKey((k) => k + 1)}
