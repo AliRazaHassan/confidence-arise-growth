@@ -20,6 +20,9 @@ import {
   recordBatchSubmissions,
   recordSearch,
   recordSubmission,
+  updateLeadCRM,
+  getLeadCRM,
+  listLeadCRM,
 } from './src/store.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -94,6 +97,29 @@ app.get('/api/history/submissions', requireAuth, (req, res) => {
 app.get('/api/history/leads', requireAuth, (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 200, 500)
   res.json({ items: listLeads(limit) })
+})
+
+app.get('/api/crm/lead/:id', requireAuth, (req, res) => {
+  const crm = getLeadCRM(req.params.id)
+  res.json({ crm })
+})
+
+app.get('/api/crm', requireAuth, (_req, res) => {
+  res.json({ items: listLeadCRM(500) })
+})
+
+app.patch('/api/crm/lead/:id', requireAuth, (req, res) => {
+  const { status, notes, nextFollowUpAt, outcome } = req.body || {}
+  const allowed = ['new', 'contacted', 'replied', 'qualified', 'proposal', 'won', 'lost', 'paused']
+  if (status && !allowed.includes(status)) return res.status(400).json({ error: 'Invalid lead status.' })
+  const crm = updateLeadCRM({
+    id: req.params.id,
+    status,
+    notes,
+    nextFollowUpAt,
+    outcome,
+  })
+  res.json({ crm })
 })
 
 app.get('/api/businesses', requireAuth, async (req, res) => {
