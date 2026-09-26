@@ -649,3 +649,16 @@ tr.row-on {
   border-bottom: 1px solid var(--line);
   font-size: 0.84rem;
 }
+
+.settings-card {
+  max-width: 620px;
+  display: grid;
+  gap: 0.9rem;
+  padding: 1.25rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.settings-card h3 { margin: 0; font-family: var(--display); }
+.settings-card .btn-primary { width: fit-content; }
