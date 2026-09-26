@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer'
 import { toWhatsAppDigits } from './templates.js'
 import { getEmailSettings } from './emailSettings.js'
+import { getWhatsAppSettings } from './whatsappSettings.js'
 
 /**
  * Send email via Resend API
@@ -61,9 +62,10 @@ export async function testEmailConnection(settings) {
  * https://developers.facebook.com/docs/whatsapp/cloud-api/guides/send-messages
  */
 export async function sendWhatsApp({ phone, text }) {
-  const token = process.env.WHATSAPP_TOKEN
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
-  const version = process.env.WHATSAPP_GRAPH_VERSION || 'v21.0'
+  const saved = getWhatsAppSettings({ includeSecret: true })
+  const token = saved?.accessToken || process.env.WHATSAPP_TOKEN
+  const phoneNumberId = saved?.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID
+  const version = saved?.graphVersion || process.env.WHATSAPP_GRAPH_VERSION || 'v21.0'
   const to = toWhatsAppDigits(phone)
 
   if (!to) {
@@ -109,4 +111,14 @@ export async function sendWhatsApp({ phone, text }) {
     provider: 'whatsapp-cloud',
     to,
   }
+}
+
+export async function testWhatsAppConnection(settings) {
+  const version = settings.graphVersion || 'v21.0'
+  const res = await fetch(`https://graph.facebook.com/${version}/${settings.phoneNumberId}`, {
+    headers: { Authorization: `Bearer ${settings.accessToken}` },
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data?.error?.message || `WhatsApp API ${res.status}`)
+  return { ok: true, displayPhoneNumber: data.display_phone_number || null, verifiedName: data.verified_name || null }
 }
