@@ -399,9 +399,17 @@ function DashboardView() {
       .then(setStats).catch((e) => setError(e.message))
   }, [])
   const cards = stats ? [
-    ['Leads', stats.leads], ['Contacted', stats.contacted], ['Replies', stats.replied],
-    ['Pipeline value', ' ['Proposals', stats.proposals], ['Won', stats.won],
-    ['Follow-ups due', stats.followUpsDue], ['Reply rate', `${stats.replyRate}%`], ['Win rate', `${stats.winRate}%`],
+    ['Leads', stats.leads],
+    ['Contacted', stats.contacted],
+    ['Replies', stats.replied],
+    ['Pipeline value', 'USD ' + Number(stats.pipelineValue || 0).toLocaleString()],
+    ['Won revenue', 'USD ' + Number(stats.wonRevenue || 0).toLocaleString()],
+    ['Qualified', stats.qualified],
+    ['Proposals', stats.proposals],
+    ['Won', stats.won],
+    ['Follow-ups due', stats.followUpsDue],
+    ['Reply rate', String(stats.replyRate) + '%'],
+    ['Win rate', String(stats.winRate) + '%'],
   ] : []
   return <div className="view">
     <header className="view-head"><div><h2>Growth Command Center</h2><p>Live CRM funnel based only on stored outreach and reply activity.</p></div></header>
