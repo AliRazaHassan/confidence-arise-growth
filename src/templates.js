@@ -12,9 +12,9 @@ export function defaultEmailBody(business, { siteUrl, fromName }) {
   const opportunity = service
     ? `One opportunity I noticed is ${service.toLowerCase()}.`
     : 'I noticed a few areas where your digital customer journey may have room to improve.'
-  const evidence = reasons.length ? `\\n\\nA couple of signals behind that:\\n- ${reasons.join('\\n- ')}` : ''
-  const scoreLine = Number.isFinite(score) ? `\\n\\nOur initial growth-opportunity assessment is ${score}/100.` : ''
-  return `Hi ${name} team,\\n\\nI came across ${name} and took a quick look at the publicly available business information.\\n\\n${opportunity}${evidence}${scoreLine}\\n\\nWe help local businesses turn these gaps into better websites, AI sales assistance, lead capture and follow-up systems.\\n\\nIf useful, I can show you a short example tailored to ${name}.\\n\\nBest,\\n${fromName}\\n${siteUrl}`
+  const evidence = reasons.length ? `\n\nA couple of signals behind that:\n- ${reasons.join('\n- ')}` : ''
+  const scoreLine = Number.isFinite(score) ? `\n\nOur initial growth-opportunity assessment is ${score}/100.` : ''
+  return `Hi ${name} team,\n\nI came across ${name} and took a quick look at the publicly available business information.\n\n${opportunity}${evidence}${scoreLine}\n\nWe help local businesses turn these gaps into better websites, AI sales assistance, lead capture and follow-up systems.\n\nIf useful, I can show you a short example tailored to ${name}.\n\nBest,\n${fromName}\n${siteUrl}`
 }
 
 export function defaultWhatsAppBody(business, { siteUrl, fromName }) {
