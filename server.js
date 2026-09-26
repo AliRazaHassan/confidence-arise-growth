@@ -230,7 +230,7 @@ app.get('/api/crm', requireAuth, (_req, res) => {
 })
 
 app.patch('/api/crm/lead/:id', requireAuth, (req, res) => {
-  const { status, notes, nextFollowUpAt, outcome } = req.body || {}
+  const { status, notes, nextFollowUpAt, outcome, dealValue } = req.body || {}
   const allowed = ['new', 'contacted', 'replied', 'qualified', 'proposal', 'won', 'lost', 'paused']
   if (status && !allowed.includes(status)) return res.status(400).json({ error: 'Invalid lead status.' })
   const crm = updateLeadCRM({
@@ -239,6 +239,7 @@ app.patch('/api/crm/lead/:id', requireAuth, (req, res) => {
     notes,
     nextFollowUpAt,
     outcome,
+    dealValue,
   })
   res.json({ crm })
 })
