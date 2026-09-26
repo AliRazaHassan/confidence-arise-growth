@@ -299,6 +299,9 @@ function FindView({ config, onSent }) {
   const [dryRun, setDryRun] = useState(true)
   const [lastSend, setLastSend] = useState(null)
   const [preview, setPreview] = useState(null)
+  const [analysis, setAnalysis] = useState(null)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [minScore, setMinScore] = useState(0)
   const [q, setQ] = useState('')
 
   const stateCities = useMemo(() => citiesForState(state), [state])
@@ -309,6 +312,7 @@ function FindView({ config, onSent }) {
 
   const leads = useMemo(() => {
     let list = applyLeadFilters(businesses, { category, contact, hasWebsite, outreachOnly })
+    if (minScore > 0) list = list.filter((b) => (b.opportunityScore || 0) >= minScore)
     const needle = q.trim().toLowerCase()
     if (needle) {
       list = list.filter(
@@ -319,7 +323,7 @@ function FindView({ config, onSent }) {
       )
     }
     return list
-  }, [businesses, category, contact, hasWebsite, outreachOnly, q])
+  }, [businesses, category, contact, hasWebsite, outreachOnly, minScore, q])
 
   const selectedBusinesses = useMemo(
     () => leads.filter((b) => selected.has(b.id)),
@@ -364,6 +368,26 @@ function FindView({ config, onSent }) {
       else next.add(id)
       return next
     })
+  }
+
+  async function analyzeOne(business) {
+    setAnalyzing(true)
+    setError('')
+    try {
+      const res = await fetch('/api/intelligence/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ business }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Analysis failed')
+      setAnalysis({ business, ...data })
+    } catch (err) {
+      setError(err.message || 'Analysis failed')
+    } finally {
+      setAnalyzing(false)
+    }
   }
 
   async function previewOne(business) {
@@ -509,6 +533,16 @@ function FindView({ config, onSent }) {
           />
           Hot leads only (contact + no site)
         </label>
+        <label>
+          Opportunity
+          <select value={minScore} onChange={(e) => setMinScore(Number(e.target.value))}>
+            <option value={0}>Any score</option>
+            <option value={60}>60+</option>
+            <option value={70}>70+</option>
+            <option value={80}>80+</option>
+            <option value={90}>90+</option>
+          </select>
+        </label>
         <label className="grow">
           Filter list
           <input
@@ -567,7 +601,8 @@ function FindView({ config, onSent }) {
           <strong>{placeLabel}</strong>
           <span>
             {businesses.length} with contact
-            {quality?.outreachReady != null ? ` · ${quality.outreachReady} hot (no site)` : ''}
+            {quality?.outreachReady != null ? ` · ${quality.outreachReady} legacy hot leads` : ''}
+            {businesses.length ? ` · ${businesses.filter((b) => (b.opportunityScore || 0) >= 70).length} high opportunity` : ''}
             {' · '}
             {leads.length} shown · {selected.size} selected
           </span>
@@ -587,7 +622,8 @@ function FindView({ config, onSent }) {
               <tr>
                 <th className="check-col" />
                 <th>Business</th>
-                <th>Fit</th>
+                <th>Opportunity</th>
+                <th>Recommended</th>
                 <th>Category</th>
                 <th>Email</th>
                 <th>Phone</th>
@@ -615,16 +651,17 @@ function FindView({ config, onSent }) {
                     ) : null}
                   </td>
                   <td>
-                    {b.outreachReady ? (
-                      <span className="tone ok">Hot</span>
-                    ) : (
-                      <span className="tone warn">Has site</span>
-                    )}
+                    <strong className="score-value">{b.opportunityScore ?? '—'}/100</strong>
+                    <div className="cell-sub">{b.confidenceScore ?? '—'}% confidence</div>
+                  </td>
+                  <td>
+                    {b.recommendedServices?.[0]?.name || 'Analyze for recommendation'}
                   </td>
                   <td>{b.category}</td>
                   <td>{b.email || '—'}</td>
                   <td>{b.phone || '—'}</td>
                   <td>
+                    <button type="button" className="btn-ghost tiny" onClick={() => analyzeOne(b)} disabled={analyzing}>Analyze</button>
                     <button type="button" className="btn-ghost tiny" onClick={() => previewOne(b)}>
                       Preview
                     </button>
@@ -633,7 +670,7 @@ function FindView({ config, onSent }) {
               ))
             ) : (
               <tr>
-                <td colSpan={7} className="empty-row">
+                <td colSpan={8} className="empty-row">
                   {loading
                     ? 'Searching outreach-ready leads…'
                     : 'Pick a state and city, then search.'}
@@ -643,6 +680,23 @@ function FindView({ config, onSent }) {
           </tbody>
         </table>
       </div>
+
+      {analysis ? (
+        <aside className="drawer intelligence-drawer">
+          <div className="drawer-head">
+            <div><h3>{analysis.business.name}</h3><div className="cell-sub">Business Growth Intelligence</div></div>
+            <button type="button" className="btn-ghost tiny" onClick={() => setAnalysis(null)}>Close</button>
+          </div>
+          <div className="score-hero"><strong>{analysis.intelligence.opportunityScore}/100</strong><span>Growth Opportunity</span></div>
+          <h4>Why this lead</h4>
+          <ul className="reason-list">{analysis.intelligence.reasoning.map((x, i) => <li key={i}>{x}</li>)}</ul>
+          <h4>Recommended services</h4>
+          <div className="service-list">{analysis.intelligence.recommendedServices.length ? analysis.intelligence.recommendedServices.map((s) => <div className="service-item" key={s.id}><strong>{s.name}</strong><span>{s.reason}</span></div>) : <p className="muted">No service recommendation can be supported by the available evidence yet.</p>}</div>
+          <h4>Score breakdown</h4>
+          <div className="breakdown">{analysis.intelligence.breakdown.map((x) => <div className="breakdown-row" key={x.label}><span>{x.label}</span><strong>{x.points}/{x.max}</strong></div>)}</div>
+          {analysis.audit?.reachable ? <p className="muted">Website audited successfully. Only observable page signals were used.</p> : analysis.business.website ? <p className="muted">Website audit unavailable: {analysis.audit?.error || 'unreachable'}.</p> : null}
+        </aside>
+      ) : null}
 
       {preview ? (
         <aside className="drawer">
