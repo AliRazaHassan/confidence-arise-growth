@@ -73,6 +73,13 @@ export function recordSubmission(entry) {
 
   // Upsert lead contact history
   if (entry.businessId || entry.businessName) {
+    const leadId = entry.businessId || entry.businessName
+    const crm = readJson(CRM_FILE, {})
+    const prevCrm = crm[leadId] || {}
+    if (entry.status === 'sent') {
+      crm[leadId] = { ...prevCrm, id: leadId, status: prevCrm.status && prevCrm.status !== 'new' ? prevCrm.status : 'contacted', updatedAt: new Date().toISOString() }
+      writeJson(CRM_FILE, crm)
+    }
     upsertLead({
       id: entry.businessId || entry.businessName,
       name: entry.businessName,
