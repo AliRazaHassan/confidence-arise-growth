@@ -3,6 +3,7 @@ import express from 'express'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { searchBusinesses } from './src/search.js'
+import { analyzeBusiness, auditWebsite } from './src/intelligence.js'
 import { sendEmail, sendWhatsApp } from './src/outreach.js'
 import {
   defaultEmailBody,
@@ -142,6 +143,15 @@ app.get('/api/businesses', requireAuth, async (req, res) => {
   } finally {
     clearTimeout(timeout)
   }
+})
+
+app.post('/api/intelligence/analyze', requireAuth, async (req, res) => {
+  const { business } = req.body || {}
+  if (!business?.name) return res.status(400).json({ error: 'business required' })
+  let audit = null
+  if (business.website) audit = await auditWebsite(business.website)
+  const intelligence = analyzeBusiness(business, audit)
+  res.json({ intelligence, audit })
 })
 
 app.post('/api/outreach/preview', requireAuth, (req, res) => {
