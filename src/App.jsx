@@ -371,6 +371,7 @@ function DashboardView() {
   }, [])
   const cards = stats ? [
     ['Leads', stats.leads], ['Contacted', stats.contacted], ['Replies', stats.replied],
+    ['Pipeline value', `${Number(stats.pipelineValue || 0).toLocaleString()}`], ['Won revenue', `${Number(stats.wonRevenue || 0).toLocaleString()}`],
     ['Qualified', stats.qualified], ['Proposals', stats.proposals], ['Won', stats.won],
     ['Follow-ups due', stats.followUpsDue], ['Reply rate', `${stats.replyRate}%`], ['Win rate', `${stats.winRate}%`],
   ] : []
@@ -944,6 +945,9 @@ function FindView({ config, onSent }) {
           </label>
           <label>Next follow-up
             <input type="datetime-local" value={crm.nextFollowUpAt ? String(crm.nextFollowUpAt).slice(0,16) : ''} onChange={(e) => saveCRM(crm.business, { nextFollowUpAt: e.target.value ? new Date(e.target.value).toISOString() : null })} />
+          </label>
+          <label>Deal value ($)
+            <input type="number" min="0" value={crm.dealValue || ''} placeholder="e.g. 1500" onChange={(e) => setCrm((x) => ({ ...x, dealValue: e.target.value }))} onBlur={() => saveCRM(crm.business, { dealValue: Number(crm.dealValue || 0) })} />
           </label>
           <label>Outcome
             <input value={crm.outcome || ''} placeholder="e.g. interested, no response" onChange={(e) => setCrm((x) => ({ ...x, outcome: e.target.value }))} onBlur={() => saveCRM(crm.business, { outcome: crm.outcome || null })} />
