@@ -214,10 +214,10 @@ export async function auditWebsite(website) {
   try {
     const res = await fetch(url, {
       signal: controller.signal,
-      redirect: 'follow',
+      redirect: 'manual',
       headers: { 'User-Agent': 'ConfidenceAriseGrowthBot/1.0 (+https://confidencearise.com)' },
     })
-    if (!res.ok) return { reachable: false, status: res.status }
+    if (res.status >= 300 && res.status < 400) return { reachable: false, status: res.status, error: 'Website redirects and was not audited.' }\n    if (!res.ok) return { reachable: false, status: res.status }
     const html = (await res.text()).slice(0, 600000)
     const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim() || null
     const description =
