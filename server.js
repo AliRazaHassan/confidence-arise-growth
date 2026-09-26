@@ -4,7 +4,8 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { searchBusinesses } from './src/search.js'
 import { analyzeBusiness, auditWebsite } from './src/intelligence.js'
-import { sendEmail, sendWhatsApp, testEmailConnection } from './src/outreach.js'
+import { sendEmail, sendWhatsApp, testEmailConnection, testWhatsAppConnection } from './src/outreach.js'
+import { getWhatsAppSettings, saveWhatsAppSettings } from './src/whatsappSettings.js'
 import { getEmailSettings, saveEmailSettings, providerDefaults } from './src/emailSettings.js'
 import { buildFollowUp, defaultNextFollowUpAt } from './src/followups.js'
 import {
@@ -27,6 +28,10 @@ import {
   listLeadCRM,
   listDueFollowUps,
   recordFollowUp,
+  findLeadByContact,
+  recordInboundReply,
+  listReplies,
+  funnelAnalytics,
 } from './src/store.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -47,11 +52,13 @@ function siteConfig() {
     emailReady: Boolean(getEmailSettings()?.configured || (process.env.RESEND_API_KEY && process.env.RESEND_API_KEY !== 'pending')),
     emailAccount: getEmailSettings(),
     whatsappReady: Boolean(
-      process.env.WHATSAPP_TOKEN &&
+      getWhatsAppSettings()?.configured ||
+      (process.env.WHATSAPP_TOKEN &&
         process.env.WHATSAPP_TOKEN !== 'pending' &&
         process.env.WHATSAPP_PHONE_NUMBER_ID &&
-        process.env.WHATSAPP_PHONE_NUMBER_ID !== 'pending',
+        process.env.WHATSAPP_PHONE_NUMBER_ID !== 'pending'),
     ),
+    whatsappAccount: getWhatsAppSettings(),
     authConfigured: Boolean(process.env.AUTH_PASSWORD),
   }
 }
@@ -117,6 +124,71 @@ app.put('/api/settings/email', requireAuth, async (req, res) => {
   } catch (err) {
     res.status(400).json({ error: err.message || 'Could not save email account.' })
   }
+})
+
+app.get('/api/settings/whatsapp', requireAuth, (_req, res) => {
+  res.json({ account: getWhatsAppSettings() })
+})
+
+app.put('/api/settings/whatsapp', requireAuth, async (req, res) => {
+  try {
+    const input = req.body || {}
+    const existing = getWhatsAppSettings({ includeSecret: true })
+    const candidate = {
+      phoneNumberId: String(input.phoneNumberId || '').trim(),
+      accessToken: String(input.accessToken || existing?.accessToken || ''),
+      graphVersion: String(input.graphVersion || 'v21.0').trim(),
+    }
+    if (!candidate.phoneNumberId || !candidate.accessToken) return res.status(400).json({ error: 'Phone Number ID and access token are required.' })
+    const verified = await testWhatsAppConnection(candidate)
+    const account = saveWhatsAppSettings({ ...input, accessToken: input.accessToken || existing?.accessToken })
+    res.json({ ok: true, account, verified })
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Could not connect WhatsApp.' })
+  }
+})
+
+app.get('/api/webhooks/whatsapp', (req, res) => {
+  const settings = getWhatsAppSettings()
+  const mode = req.query['hub.mode']
+  const token = req.query['hub.verify_token']
+  const challenge = req.query['hub.challenge']
+  if (mode === 'subscribe' && settings?.verifyToken && token === settings.verifyToken) return res.status(200).send(challenge)
+  return res.sendStatus(403)
+})
+
+app.post('/api/webhooks/whatsapp', (req, res) => {
+  try {
+    const changes = req.body?.entry?.flatMap((entry) => entry.changes || []) || []
+    for (const change of changes) {
+      const messages = change?.value?.messages || []
+      for (const message of messages) {
+        const from = message.from || ''
+        const text = message.text?.body || message.button?.text || message.interactive?.button_reply?.title || ''
+        if (!text) continue
+        const lead = findLeadByContact({ phone: from })
+        recordInboundReply({ businessId: lead?.id || null, channel: 'whatsapp', from, text, externalId: message.id || null })
+      }
+    }
+    res.sendStatus(200)
+  } catch {
+    res.sendStatus(200)
+  }
+})
+
+app.post('/api/crm/lead/:id/reply', requireAuth, (req, res) => {
+  const { channel = 'email', from = '', text = '', externalId = null } = req.body || {}
+  if (!text) return res.status(400).json({ error: 'Reply text is required.' })
+  const reply = recordInboundReply({ businessId: req.params.id, channel, from, text, externalId })
+  res.json({ reply, crm: getLeadCRM(req.params.id) })
+})
+
+app.get('/api/crm/replies', requireAuth, (req, res) => {
+  res.json({ items: listReplies(Math.min(Number(req.query.limit) || 100, 500)) })
+})
+
+app.get('/api/analytics/funnel', requireAuth, (_req, res) => {
+  res.json(funnelAnalytics())
 })
 
 app.get('/api/states', requireAuth, (_req, res) => {
