@@ -127,6 +127,32 @@ function HistoryView() {
     load()
   }, [load])
 
+  async function sendFollowUp() {
+    if (!followUpPreview?.lead) return
+    setError('')
+    const lead = followUpPreview.lead
+    const channels = [lead.email ? 'email' : null, lead.phone ? 'whatsapp' : null].filter(Boolean)
+    if (!channels.length) {
+      setError('This lead has no email or phone for follow-up.')
+      return
+    }
+    try {
+      const res = await fetch(`/api/crm/lead/${encodeURIComponent(lead.id)}/follow-up/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ business: lead, channels }),
+      })
+      const data = await res.json()
+      if (!res.ok && res.status !== 207) throw new Error(data.error || 'Follow-up failed')
+      if (data.status !== 'sent') throw new Error('Follow-up was not fully sent. Check outreach provider configuration.')
+      setFollowUpPreview(null)
+      await load()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
   async function previewFollowUp(lead) {
     setError('')
     try {
@@ -326,6 +352,7 @@ function HistoryView() {
           <h4>Email subject</h4><p className="subj">{followUpPreview.message.subject}</p>
           <h4>Email</h4><pre>{followUpPreview.message.email}</pre>
           <h4>WhatsApp</h4><pre>{followUpPreview.message.whatsapp}</pre>
+          <button type="button" className="btn-primary followup-send" onClick={sendFollowUp}>Send follow-up</button>
         </aside>
       ) : null}
     </div>
