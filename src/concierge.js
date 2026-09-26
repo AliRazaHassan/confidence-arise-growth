@@ -40,3 +40,59 @@ export function answerConcierge(message) {
   if (includesAny(q, ['lead', 'prospect', 'opportunit'])) return { answer: s.opportunities.length ? `I found ${s.opportunities.length} strong unworked leads in current data. Start with: ${s.opportunities.slice(0,5).map(x=>`${x.name} (${x.opportunityScore || x.intelligence?.opportunityScore || 0})`).join(', ')}.` : 'There are no unworked scored leads in the current CRM. Use Find leads to generate a fresh batch.', ...s }
   return { answer: `Current picture: ${s.stats.leads} leads, ${s.stats.contacted} contacted, ${s.stats.replied} replies, ${s.stats.followUpsDue} follow-ups due, and USD ${Number(s.stats.pipelineValue||0).toLocaleString()} pipeline value. Ask “what should I do today?” for a prioritized action queue.`, ...s }
 }
+
+function compactContext(snapshot) {
+  return {
+    stats: snapshot.stats,
+    priorityTasks: snapshot.tasks,
+    dueFollowUps: snapshot.due.slice(0, 10).map((x) => ({ id: x.id, name: x.name, status: x.crm?.status, due: x.crm?.nextFollowUpAt })),
+    actionableReplies: snapshot.hotReplies.slice(0, 10).map((x) => ({ leadId: x.businessId, classification: x.classification, objection: x.objection, nextAction: x.nextAction })),
+    opportunities: snapshot.opportunities.slice(0, 10).map((x) => ({ id: x.id, name: x.name, score: x.opportunityScore || x.intelligence?.opportunityScore || 0 })),
+  }
+}
+
+export async function answerConciergeAI(message) {
+  const snapshot = conciergeSnapshot()
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) return { ...answerConcierge(message), aiPowered: false, aiError: 'OPENAI_API_KEY is not configured.' }
+
+  const system = `You are the AI Growth Concierge inside a lead-generation CRM. Be concise, practical and grounded only in the supplied workspace data. Help the operator prioritize leads, replies, follow-ups, pipeline and revenue. Never claim an action was executed unless the application actually executed it. When useful, give a short numbered action plan. If workspace data does not support a claim, say so.`
+  try {
+    const res = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: process.env.OPENAI_CONCIERGE_MODEL || 'gpt-5.6-luna',
+        input: [
+          { role: 'system', content: [{ type: 'input_text', text: system }] },
+          { role: 'user', content: [{ type: 'input_text', text: `Workspace data:\n${JSON.stringify(compactContext(snapshot))}\n\nUser request: ${String(message || '')}` }] },
+        ],
+        max_output_tokens: 700,
+      }),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data?.error?.message || `OpenAI API ${res.status}`)
+    const answer = data.output_text || data.output?.flatMap((x) => x.content || []).find((x) => x.type === 'output_text')?.text
+    if (!answer) throw new Error('OpenAI returned no text response.')
+    return { ...snapshot, answer, aiPowered: true }
+  } catch (err) {
+    return { ...answerConcierge(message), aiPowered: false, aiError: err.message }
+  }
+}
+
+export async function testConciergeAI() {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) return { ok: false, configured: false, error: 'OPENAI_API_KEY is not configured.' }
+  try {
+    const res = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model: process.env.OPENAI_CONCIERGE_MODEL || 'gpt-5.6-luna', input: 'Reply with OK.', max_output_tokens: 10 }),
+    })
+    const data = await res.json()
+    if (!res.ok) return { ok: false, configured: true, error: data?.error?.message || `OpenAI API ${res.status}` }
+    return { ok: true, configured: true, model: process.env.OPENAI_CONCIERGE_MODEL || 'gpt-5.6-luna' }
+  } catch (err) {
+    return { ok: false, configured: true, error: err.message }
+  }
+}
