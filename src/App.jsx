@@ -1023,6 +1023,7 @@ function Concierge() {
   const [aiStatus, setAiStatus] = useState(null)
   const [actionLeads, setActionLeads] = useState([])
   const [selectedContext, setSelectedContext] = useState(null)
+  const [pendingAction, setPendingAction] = useState(null)
 
   useEffect(() => {
     fetch('/api/concierge/snapshot', { credentials: 'include' }).then((r) => r.json()).then((d) => setTasks(d.tasks || [])).catch(() => {})
@@ -1048,12 +1049,14 @@ function Concierge() {
     const timer = setInterval(() => setProgress((p) => Math.min(p + Math.max(1, Math.round((92-p)/8)), 92)), 450)
     try {
       const endpoint = selectedContext ? '/api/concierge/context' : '/api/concierge/chat'
-      const payload = selectedContext ? { question: q, context: selectedContext } : { message: q }
+      const payload = selectedContext ? { question: q, context: selectedContext } : { message: q, pendingAction }
       const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Concierge unavailable')
       setTasks(data.tasks || [])
       if (data.action?.leads) setActionLeads(data.action.leads)
+      if (data.action?.status === 'needs_input') setPendingAction(data.action)
+      else if (data.action?.status === 'completed') setPendingAction(null)
       if (selectedContext) setSelectedContext(null)
       if (data.aiPowered != null) setAiStatus((s) => ({ ...(s || {}), ok: Boolean(data.aiPowered), error: data.aiError || null }))
       setChat((x) => [...x, { role: 'assistant', text: data.answer }]); setProgress(100)
