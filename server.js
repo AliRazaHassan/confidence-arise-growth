@@ -225,7 +225,23 @@ app.get('/api/concierge/snapshot', requireAuth, (_req, res) => {
 
 app.post('/api/concierge/chat', requireAuth, async (req, res) => {
   const message = String(req.body?.message || '').trim()
-  const action = parseConciergeAction(message)
+  const pending = req.body?.pendingAction
+  let action = parseConciergeAction(message)
+  if (!action && pending?.type === 'lead_search') {
+    const follow = message.trim()
+    const anyState = /^(any|any state|anywhere|you choose|choose|best state|anywhere in usa|usa)$/i.test(follow)
+    if (anyState) {
+      const defaults = [
+        ['Miami', 'FL'], ['Austin', 'TX'], ['Phoenix', 'AZ'], ['Atlanta', 'GA'],
+        ['Charlotte', 'NC'], ['Dallas', 'TX'], ['Orlando', 'FL'], ['Denver', 'CO'],
+      ]
+      const [city, state] = defaults[Math.abs(String(pending.category || '').length) % defaults.length]
+      action = { ...pending, city, state, needsLocation: false, autoLocation: true }
+    } else {
+      const loc = follow.match(/^([a-z .'-]+?)(?:,?\s+([a-z]{2}))$/i)
+      if (loc) action = { ...pending, city: loc[1].trim(), state: loc[2].toUpperCase(), needsLocation: false }
+    }
+  }
   if (action?.type === 'sync_replies') {
     try {
       const summary = await syncEmailReplies({ maxMessages: 50 })
@@ -245,7 +261,7 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
         .slice(0, action.limit)
       const items = ranked.length ? ranked : result.businesses.slice(0, action.limit)
       recordSearch({ state: action.state, city: action.city, postalCode: '', placeLabel: result.place?.label, count: items.length, by: req.user?.email })
-      return res.json({ ...conciergeSnapshot(), answer: `Found ${items.length} leads for ${action.category} in ${action.city}, ${action.state}. I ranked them by opportunity score; review the results before outreach.`, aiPowered: false, action: { ...action, status: 'completed', leads: items } })
+      return res.json({ ...conciergeSnapshot(), answer: `Found ${items.length} leads for ${action.category} in ${action.city}, ${action.state}${action.autoLocation ? ' (location selected automatically)' : ''}. I ranked them by opportunity score; review the results before outreach.`, aiPowered: false, action: { ...action, status: 'completed', leads: items } })
     } catch (err) {
       return res.status(502).json({ error: err.message || 'Lead search failed' })
     }
