@@ -902,7 +902,7 @@ function FindView({ config, onSent }) {
           <tbody>
             {leads.length ? (
               leads.map((b) => (
-                <tr key={b.id} className={selected.has(b.id) ? 'row-on' : ''}>
+                <tr key={b.id} className={selected.has(b.id) ? 'row-on' : ''} onContextMenu={(e) => { e.preventDefault(); window.dispatchEvent(new CustomEvent('ask-concierge', { detail: { context: b, prompt: 'Analyze ' + b.name + ' and tell me the best sales angle, risks, and next action.' } })) }} title="Right-click to Ask AI">
                   <td className="check-col">
                     <input
                       type="checkbox"
