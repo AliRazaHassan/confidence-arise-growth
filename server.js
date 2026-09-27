@@ -9,7 +9,7 @@ import { sendEmail, sendWhatsApp, testEmailConnection, testWhatsAppConnection } 
 import { getWhatsAppSettings, saveWhatsAppSettings } from './src/whatsappSettings.js'
 import { getEmailSettings, saveEmailSettings, providerDefaults } from './src/emailSettings.js'
 import { syncEmailReplies } from './src/emailReplies.js'
-import { answerConciergeAI, conciergeSnapshot, testConciergeAI } from './src/concierge.js'
+import { answerConciergeAI, conciergeSnapshot, testConciergeAI, parseConciergeAction, contextualConciergeAI } from './src/concierge.js'
 import { buildFollowUp, defaultNextFollowUpAt } from './src/followups.js'
 import {
   defaultEmailBody,
@@ -225,7 +225,37 @@ app.get('/api/concierge/snapshot', requireAuth, (_req, res) => {
 
 app.post('/api/concierge/chat', requireAuth, async (req, res) => {
   const message = String(req.body?.message || '').trim()
+  const action = parseConciergeAction(message)
+  if (action?.type === 'sync_replies') {
+    try {
+      const summary = await syncEmailReplies({ maxMessages: 50 })
+      return res.json({ ...conciergeSnapshot(), answer: `Email reply sync complete. Checked ${summary.checked || 0}, matched ${summary.matched || 0}, recorded ${summary.recorded || 0}.`, aiPowered: false, action: { ...action, status: 'completed', summary } })
+    } catch (err) {
+      return res.status(400).json({ error: err.message || 'Email sync failed' })
+    }
+  }
+  if (action?.type === 'lead_search') {
+    if (!action.state) return res.json({ ...conciergeSnapshot(), answer: `I can run that lead search. Please include the 2-letter US state, for example: "Find 20 dentists leads in Austin, TX".`, aiPowered: false, action: { ...action, status: 'needs_input' } })
+    try {
+      const result = await searchBusinesses({ state: action.state, city: action.city, postalCode: '' })
+      const needle = action.category.toLowerCase()
+      const ranked = result.businesses
+        .filter((b) => !needle || String(b.category || '').toLowerCase().includes(needle) || String(b.name || '').toLowerCase().includes(needle) || String(b.tags?.amenity || '').toLowerCase().includes(needle))
+        .sort((a,b) => Number(b.opportunityScore || 0) - Number(a.opportunityScore || 0))
+        .slice(0, action.limit)
+      const items = ranked.length ? ranked : result.businesses.slice(0, action.limit)
+      recordSearch({ state: action.state, city: action.city, postalCode: '', placeLabel: result.place?.label, count: items.length, by: req.user?.email })
+      return res.json({ ...conciergeSnapshot(), answer: `Found ${items.length} leads for ${action.category} in ${action.city}, ${action.state}. I ranked them by opportunity score; review the results before outreach.`, aiPowered: false, action: { ...action, status: 'completed', leads: items } })
+    } catch (err) {
+      return res.status(502).json({ error: err.message || 'Lead search failed' })
+    }
+  }
   res.json(await answerConciergeAI(message))
+})
+
+app.post('/api/concierge/context', requireAuth, async (req, res) => {
+  const { question, context } = req.body || {}
+  res.json(await contextualConciergeAI({ question, context }))
 })
 
 app.get('/api/concierge/ai-status', requireAuth, async (_req, res) => {
