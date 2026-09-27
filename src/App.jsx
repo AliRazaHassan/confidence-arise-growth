@@ -1017,45 +1017,55 @@ function Concierge() {
   const [open, setOpen] = useState(false)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
-  const [chat, setChat] = useState([{ role: 'assistant', text: 'I track your leads, replies, follow-ups and pipeline. Ask me what needs attention.' }])
+  const [progress, setProgress] = useState(0)
+  const [chat, setChat] = useState([{ role: 'assistant', text: 'I track your leads, replies, follow-ups and pipeline. I can also run lead searches for you.' }])
   const [tasks, setTasks] = useState([])
   const [aiStatus, setAiStatus] = useState(null)
+  const [actionLeads, setActionLeads] = useState([])
 
   useEffect(() => {
-    fetch('/api/concierge/snapshot', { credentials: 'include' })
-      .then((r) => r.json()).then((d) => setTasks(d.tasks || [])).catch(() => {})
-    fetch('/api/concierge/ai-status', { credentials: 'include' })
-      .then((r) => r.json()).then(setAiStatus).catch(() => setAiStatus({ ok: false }))
+    fetch('/api/concierge/snapshot', { credentials: 'include' }).then((r) => r.json()).then((d) => setTasks(d.tasks || [])).catch(() => {})
+    fetch('/api/concierge/ai-status', { credentials: 'include' }).then((r) => r.json()).then(setAiStatus).catch(() => setAiStatus({ ok: false }))
+  }, [])
+
+  useEffect(() => {
+    const handler = (e) => {
+      const detail = e.detail || {}
+      setOpen(true)
+      setMessage(detail.prompt || ('Tell me what I should do with ' + (detail.context?.name || detail.context?.title || 'this item')))
+    }
+    window.addEventListener('ask-concierge', handler)
+    return () => window.removeEventListener('ask-concierge', handler)
   }, [])
 
   async function ask(text) {
     const q = String(text || message).trim()
     if (!q || busy) return
-    setMessage('')
-    setChat((x) => [...x, { role: 'user', text: q }])
-    setBusy(true)
+    setMessage(''); setProgress(8); setActionLeads([])
+    setChat((x) => [...x, { role: 'user', text: q }]); setBusy(true)
+    const timer = setInterval(() => setProgress((p) => Math.min(p + Math.max(1, Math.round((92-p)/8)), 92)), 450)
     try {
       const res = await fetch('/api/concierge/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ message: q }) })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Concierge unavailable')
       setTasks(data.tasks || [])
-      setAiStatus((s) => ({ ...(s || {}), ok: Boolean(data.aiPowered), error: data.aiError || null }))
-      setChat((x) => [...x, { role: 'assistant', text: data.answer }])
-    } catch (err) {
-      setChat((x) => [...x, { role: 'assistant', text: err.message }])
-    } finally { setBusy(false) }
+      if (data.action?.leads) setActionLeads(data.action.leads)
+      if (data.aiPowered != null) setAiStatus((s) => ({ ...(s || {}), ok: Boolean(data.aiPowered), error: data.aiError || null }))
+      setChat((x) => [...x, { role: 'assistant', text: data.answer }]); setProgress(100)
+    } catch (err) { setChat((x) => [...x, { role: 'assistant', text: err.message }]) }
+    finally { clearInterval(timer); setTimeout(() => setProgress(0), 700); setBusy(false) }
   }
 
   return <>
     <button type="button" className="concierge-fab" onClick={() => setOpen((x) => !x)} aria-label="Open AI concierge"><span className="robot-icon" aria-hidden="true">🤖</span></button>
     {open ? <aside className="concierge-panel">
       <div className="concierge-head"><div className="concierge-title"><span className="robot-avatar" aria-hidden="true">🤖</span><div><strong>AI Concierge</strong><span>Growth copilot · <i className={aiStatus?.ok ? 'ai-live' : 'ai-fallback'}>{aiStatus?.ok ? 'AI live' : 'fallback'}</i></span></div></div><button className="btn-ghost tiny" onClick={() => setOpen(false)}>Close</button></div>
-      <div className="concierge-quick">
-        {['What should I do today?', 'Show hot leads', 'Follow-ups due?', 'Pipeline status'].map((q) => <button type="button" key={q} onClick={() => ask(q)}>{q}</button>)}
-      </div>
+      {busy || progress ? <div className="agent-progress"><div style={{width: progress + '%'}} /><span>{progress}% · {progress < 35 ? 'Understanding request' : progress < 75 ? 'Working through data' : 'Preparing results'}</span></div> : null}
+      <div className="concierge-quick">{['What should I do today?', 'Show hot leads', 'Follow-ups due?', 'Pipeline status', 'Sync email replies'].map((q) => <button type="button" key={q} onClick={() => ask(q)}>{q}</button>)}</div>
       {tasks.length ? <div className="concierge-tasks"><strong>Priority queue</strong>{tasks.slice(0,3).map((t,i) => <div className="concierge-task" key={t.leadId || i}><span>{t.priority}</span><div><b>{t.title}</b><small>{t.detail}</small></div></div>)}</div> : null}
-      <div className="concierge-chat">{chat.map((m,i) => <div key={i} className={'concierge-msg ' + m.role}>{m.text}</div>)}{busy ? <div className="concierge-msg assistant">Checking your workspace…</div> : null}</div>
-      <form className="concierge-input" onSubmit={(e) => { e.preventDefault(); ask() }}><input value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Ask about leads, replies, revenue…" /><button className="btn-primary tiny" disabled={busy}>Ask</button></form>
+      <div className="concierge-chat">{chat.map((m,i) => <div key={i} className={'concierge-msg ' + m.role}>{m.text}</div>)}{busy ? <div className="concierge-msg assistant">Working…</div> : null}</div>
+      {actionLeads.length ? <div className="agent-results"><strong>Agent results</strong>{actionLeads.slice(0,10).map((b) => <div className="agent-lead" key={b.id}><div><b>{b.name}</b><small>{b.address || b.category}</small></div><span>{b.opportunityScore || 0}/100</span><button type="button" onClick={() => window.dispatchEvent(new CustomEvent('ask-concierge',{detail:{context:b,prompt:'How should I pitch ' + b.name + '?'}}))}>Ask AI</button></div>)}</div> : null}
+      <form className="concierge-input" onSubmit={(e) => { e.preventDefault(); ask() }}><input value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Try: Find 20 dentists leads in Austin, TX" /><button className="btn-primary tiny" disabled={busy}>Ask</button></form>
     </aside> : null}
   </>
 }
