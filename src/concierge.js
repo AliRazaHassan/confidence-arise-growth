@@ -101,11 +101,33 @@ export async function testConciergeAI() {
 export function parseConciergeAction(message) {
   const text = String(message || '').trim()
   const lower = text.toLowerCase()
-  const find = lower.match(/(?:find|generate|search|get me|show me)\s+(?:(\d{1,3})\s+)?(?:high[- ]?(?:potential|opportunity)\s+)?([a-z &-]+?)\s+(?:leads?|business(?:es)?)\s+(?:in|from)\s+([a-z .'-]+?)(?:,\s*([a-z]{2}))?(?:\s*$|\s+with\s+)/i)
-  if (find) {
-    return { type: 'lead_search', limit: Math.min(Number(find[1] || 20), 50), category: find[2].trim(), city: find[3].trim(), state: String(find[4] || '').toUpperCase() }
-  }
   if (/sync.*(?:email|repl)|(?:email|repl).*sync/i.test(lower)) return { type: 'sync_replies' }
+
+  const wantsLeads = /\b(find|generate|search|get|show|give|need)\b/i.test(lower) && /\b(leads?|prospects?|business(?:es)?)\b/i.test(lower)
+  if (wantsLeads) {
+    const count = Math.min(Number(lower.match(/\b(\d{1,3})\b/)?.[1] || 20), 50)
+    const locationMatch = text.match(/\b(?:in|from|near)\s+([a-z .'-]+?)(?:,\s*([a-z]{2}))?\s*$/i)
+    const rawCategory = lower
+      .replace(/\b(find|generate|search|get|show|give|need|me|some|good|best|high|quality|potential|qualified|hot|new)\b/g, ' ')
+      .replace(/\b(leads?|prospects?|business(?:es)?|of|for)\b/g, ' ')
+      .replace(/\b(?:in|from|near)\b[\s\S]*$/i, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+    const aliases = {
+      realestate: 'real estate', 'real-estate': 'real estate', realtor: 'real estate',
+      realtors: 'real estate', property: 'real estate', properties: 'real estate',
+      dentist: 'dentist', dentists: 'dentist', restaurant: 'restaurant', restaurants: 'restaurant',
+    }
+    const category = aliases[rawCategory] || rawCategory || 'business'
+    return {
+      type: 'lead_search',
+      limit: count,
+      category,
+      city: locationMatch?.[1]?.trim() || '',
+      state: String(locationMatch?.[2] || '').toUpperCase(),
+      needsLocation: !locationMatch,
+    }
+  }
   return null
 }
 
