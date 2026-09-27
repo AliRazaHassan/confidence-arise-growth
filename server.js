@@ -1,5 +1,6 @@
 import 'dotenv/config'
 import express from 'express'
+import crypto from 'crypto'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { searchBusinesses } from './src/search.js'
@@ -40,7 +41,22 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
 const PORT = process.env.PORT || 4174
 
-app.use(express.json({ limit: '1mb' }))
+app.use(express.json({
+  limit: '1mb',
+  verify: (req, _res, buf) => {
+    if (req.originalUrl?.startsWith('/api/webhooks/whatsapp')) req.rawBody = Buffer.from(buf)
+  },
+}))
+
+function verifyWhatsAppSignature(req) {
+  const secret = process.env.WHATSAPP_APP_SECRET
+  const signature = String(req.get('x-hub-signature-256') || '')
+  if (!secret || !signature.startsWith('sha256=') || !req.rawBody) return false
+  const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(req.rawBody).digest('hex')
+  const a = Buffer.from(signature)
+  const b = Buffer.from(expected)
+  return a.length === b.length && crypto.timingSafeEqual(a, b)
+}
 
 const recent = new Map()
 const CACHE_MS = 25 * 60 * 1000
@@ -160,6 +176,7 @@ app.get('/api/webhooks/whatsapp', (req, res) => {
 })
 
 app.post('/api/webhooks/whatsapp', (req, res) => {
+  if (!verifyWhatsAppSignature(req)) return res.sendStatus(403)
   try {
     const changes = req.body?.entry?.flatMap((entry) => entry.changes || []) || []
     for (const change of changes) {
