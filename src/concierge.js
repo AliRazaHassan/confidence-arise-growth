@@ -96,3 +96,37 @@ export async function testConciergeAI() {
     return { ok: false, configured: true, error: err.message }
   }
 }
+
+
+export function parseConciergeAction(message) {
+  const text = String(message || '').trim()
+  const lower = text.toLowerCase()
+  const find = lower.match(/(?:find|generate|search|get me|show me)\s+(?:(\d{1,3})\s+)?(?:high[- ]?(?:potential|opportunity)\s+)?([a-z &-]+?)\s+(?:leads?|business(?:es)?)\s+(?:in|from)\s+([a-z .'-]+?)(?:,\s*([a-z]{2}))?(?:\s*$|\s+with\s+)/i)
+  if (find) {
+    return { type: 'lead_search', limit: Math.min(Number(find[1] || 20), 50), category: find[2].trim(), city: find[3].trim(), state: String(find[4] || '').toUpperCase() }
+  }
+  if (/sync.*(?:email|repl)|(?:email|repl).*sync/i.test(lower)) return { type: 'sync_replies' }
+  return null
+}
+
+export async function contextualConciergeAI({ question, context }) {
+  const apiKey = process.env.OPENAI_API_KEY
+  const safe = context && typeof context === 'object' ? context : {}
+  if (!apiKey) return { answer: `AI is unavailable right now. Selected context: ${safe.name || safe.title || 'item'}.`, aiPowered: false }
+  try {
+    const res = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: process.env.OPENAI_CONCIERGE_MODEL || 'gpt-5.6-luna',
+        input: `You are a concise sales growth copilot. Answer only from the selected CRM/lead context. If evidence is missing, say so.\nContext: ${JSON.stringify(safe)}\nQuestion: ${String(question || 'What should I know about this?')}`,
+        max_output_tokens: 500,
+      }),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data?.error?.message || 'OpenAI request failed')
+    return { answer: data.output_text || 'No answer returned.', aiPowered: true }
+  } catch (err) {
+    return { answer: `AI request failed: ${err.message}`, aiPowered: false }
+  }
+}
