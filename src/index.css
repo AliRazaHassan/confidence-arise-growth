@@ -699,3 +699,14 @@ tr.row-on {
 
 .ai-live { color: #18864b; font-style: normal; font-weight: 700; }
 .ai-fallback { color: #a66b00; font-style: normal; font-weight: 700; }
+
+.agent-progress { position: relative; height: 34px; overflow: hidden; background: rgba(127,127,127,.1); border-radius: 10px; margin: 8px 0; }
+.agent-progress > div { position: absolute; inset: 0 auto 0 0; background: rgba(100,100,100,.16); transition: width .35s ease; }
+.agent-progress span { position: relative; z-index: 1; display: flex; align-items: center; height: 100%; padding: 0 10px; font-size: 12px; font-weight: 700; }
+.agent-results { display: grid; gap: 7px; max-height: 250px; overflow: auto; padding: 8px 0; }
+.agent-lead { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; padding: 8px; border: 1px solid rgba(127,127,127,.18); border-radius: 10px; }
+.agent-lead div { display: grid; min-width: 0; }
+.agent-lead small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .65; }
+.agent-lead > span { font-size: 11px; font-weight: 800; }
+.agent-lead button { border: 0; border-radius: 8px; padding: 6px 8px; cursor: pointer; }
+.leads-table tbody tr { cursor: context-menu; }
