@@ -696,3 +696,6 @@ tr.row-on {
 .concierge-title { display: flex !important; grid-template-columns: auto 1fr; align-items: center; gap: .6rem !important; }
 .robot-avatar { width: 36px; height: 36px; display: grid; place-items: center; flex: 0 0 36px; border-radius: 11px; background: var(--brand-soft); font-size: 1.25rem; }
 .concierge-title > div { display: grid; gap: .1rem; }
+
+.ai-live { color: #18864b; font-style: normal; font-weight: 700; }
+.ai-fallback { color: #a66b00; font-style: normal; font-weight: 700; }
