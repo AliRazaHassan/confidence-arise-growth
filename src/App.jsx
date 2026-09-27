@@ -1022,6 +1022,7 @@ function Concierge() {
   const [tasks, setTasks] = useState([])
   const [aiStatus, setAiStatus] = useState(null)
   const [actionLeads, setActionLeads] = useState([])
+  const [selectedContext, setSelectedContext] = useState(null)
 
   useEffect(() => {
     fetch('/api/concierge/snapshot', { credentials: 'include' }).then((r) => r.json()).then((d) => setTasks(d.tasks || [])).catch(() => {})
@@ -1032,6 +1033,7 @@ function Concierge() {
     const handler = (e) => {
       const detail = e.detail || {}
       setOpen(true)
+      setSelectedContext(detail.context || null)
       setMessage(detail.prompt || ('Tell me what I should do with ' + (detail.context?.name || detail.context?.title || 'this item')))
     }
     window.addEventListener('ask-concierge', handler)
@@ -1045,11 +1047,14 @@ function Concierge() {
     setChat((x) => [...x, { role: 'user', text: q }]); setBusy(true)
     const timer = setInterval(() => setProgress((p) => Math.min(p + Math.max(1, Math.round((92-p)/8)), 92)), 450)
     try {
-      const res = await fetch('/api/concierge/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ message: q }) })
+      const endpoint = selectedContext ? '/api/concierge/context' : '/api/concierge/chat'
+      const payload = selectedContext ? { question: q, context: selectedContext } : { message: q }
+      const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Concierge unavailable')
       setTasks(data.tasks || [])
       if (data.action?.leads) setActionLeads(data.action.leads)
+      if (selectedContext) setSelectedContext(null)
       if (data.aiPowered != null) setAiStatus((s) => ({ ...(s || {}), ok: Boolean(data.aiPowered), error: data.aiError || null }))
       setChat((x) => [...x, { role: 'assistant', text: data.answer }]); setProgress(100)
     } catch (err) { setChat((x) => [...x, { role: 'assistant', text: err.message }]) }
