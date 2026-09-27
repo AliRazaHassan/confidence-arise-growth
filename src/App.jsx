@@ -1019,10 +1019,13 @@ function Concierge() {
   const [busy, setBusy] = useState(false)
   const [chat, setChat] = useState([{ role: 'assistant', text: 'I track your leads, replies, follow-ups and pipeline. Ask me what needs attention.' }])
   const [tasks, setTasks] = useState([])
+  const [aiStatus, setAiStatus] = useState(null)
 
   useEffect(() => {
     fetch('/api/concierge/snapshot', { credentials: 'include' })
       .then((r) => r.json()).then((d) => setTasks(d.tasks || [])).catch(() => {})
+    fetch('/api/concierge/ai-status', { credentials: 'include' })
+      .then((r) => r.json()).then(setAiStatus).catch(() => setAiStatus({ ok: false }))
   }, [])
 
   async function ask(text) {
@@ -1036,6 +1039,7 @@ function Concierge() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Concierge unavailable')
       setTasks(data.tasks || [])
+      setAiStatus((s) => ({ ...(s || {}), ok: Boolean(data.aiPowered), error: data.aiError || null }))
       setChat((x) => [...x, { role: 'assistant', text: data.answer }])
     } catch (err) {
       setChat((x) => [...x, { role: 'assistant', text: err.message }])
@@ -1045,7 +1049,7 @@ function Concierge() {
   return <>
     <button type="button" className="concierge-fab" onClick={() => setOpen((x) => !x)} aria-label="Open AI concierge"><span className="robot-icon" aria-hidden="true">🤖</span></button>
     {open ? <aside className="concierge-panel">
-      <div className="concierge-head"><div className="concierge-title"><span className="robot-avatar" aria-hidden="true">🤖</span><div><strong>AI Concierge</strong><span>Growth copilot</span></div></div><button className="btn-ghost tiny" onClick={() => setOpen(false)}>Close</button></div>
+      <div className="concierge-head"><div className="concierge-title"><span className="robot-avatar" aria-hidden="true">🤖</span><div><strong>AI Concierge</strong><span>Growth copilot · <i className={aiStatus?.ok ? 'ai-live' : 'ai-fallback'}>{aiStatus?.ok ? 'AI live' : 'fallback'}</i></span></div></div><button className="btn-ghost tiny" onClick={() => setOpen(false)}>Close</button></div>
       <div className="concierge-quick">
         {['What should I do today?', 'Show hot leads', 'Follow-ups due?', 'Pipeline status'].map((q) => <button type="button" key={q} onClick={() => ask(q)}>{q}</button>)}
       </div>
