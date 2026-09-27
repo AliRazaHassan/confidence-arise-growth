@@ -235,7 +235,7 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
     }
   }
   if (action?.type === 'lead_search') {
-    if (!action.state) return res.json({ ...conciergeSnapshot(), answer: `I can run that lead search. Please include the 2-letter US state, for example: "Find 20 dentists leads in Austin, TX".`, aiPowered: false, action: { ...action, status: 'needs_input' } })
+    if (action.needsLocation || !action.city || !action.state) return res.json({ ...conciergeSnapshot(), answer: `Sure — I can find and rank ${action.category} leads. Which US city and state should I search? Example: "Miami, FL" or "Austin, TX".`, aiPowered: false, action: { ...action, status: 'needs_input', missing: ['city', 'state'] } })
     try {
       const result = await searchBusinesses({ state: action.state, city: action.city, postalCode: '' })
       const needle = action.category.toLowerCase()
