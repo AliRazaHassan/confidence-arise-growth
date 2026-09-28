@@ -1051,8 +1051,21 @@ function Concierge() {
       const endpoint = selectedContext ? '/api/concierge/context' : '/api/concierge/chat'
       const payload = selectedContext ? { question: q, context: selectedContext } : { message: q, pendingAction, history: chat.slice(-12) }
       const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) })
-      const data = await res.json()
+      let data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Concierge unavailable')
+      const aiSearch = String(data.answer || '').match(/^LEAD_SEARCH\s+({[\s\S]*})\s*$/i)
+      if (aiSearch) {
+        try {
+          const plan = JSON.parse(aiSearch[1])
+          const markets = [['Miami','FL'],['Austin','TX'],['Phoenix','AZ'],['Atlanta','GA'],['Charlotte','NC'],['Dallas','TX'],['Orlando','FL'],['Denver','CO']]
+          let city = String(plan.city || '').trim(), state = String(plan.state || '').trim().toUpperCase()
+          if (plan.anyLocation || !city || !state) [city, state] = markets[Math.abs(String(plan.category || '').length) % markets.length]
+          const command = 'find ' + Math.min(Number(plan.count || 20), 50) + ' ' + String(plan.category || 'business') + ' leads in ' + city + ', ' + state
+          const run = await fetch('/api/concierge/chat', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body:JSON.stringify({ message:command }) })
+          const executed = await run.json()
+          if (run.ok) data = executed
+        } catch {}
+      }
       setTasks(data.tasks || [])
       if (data.action?.leads) setActionLeads(data.action.leads)
       if (data.action?.status === 'needs_input') setPendingAction(data.action)
