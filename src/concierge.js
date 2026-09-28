@@ -119,13 +119,14 @@ export function parseConciergeAction(message) {
       dentist: 'dentist', dentists: 'dentist', restaurant: 'restaurant', restaurants: 'restaurant',
     }
     const category = aliases[rawCategory] || rawCategory || 'business'
+    if (!locationMatch) return null
     return {
       type: 'lead_search',
       limit: count,
       category,
-      city: locationMatch?.[1]?.trim() || '',
-      state: String(locationMatch?.[2] || '').toUpperCase(),
-      needsLocation: !locationMatch,
+      city: locationMatch[1]?.trim() || '',
+      state: String(locationMatch[2] || '').toUpperCase(),
+      needsLocation: false,
     }
   }
   return null
