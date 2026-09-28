@@ -30,6 +30,12 @@ export function answerConcierge(message) {
   const q = String(message || '').trim().toLowerCase()
   const s = conciergeSnapshot()
   if (!q) return { answer: 'Ask me about leads, follow-ups, replies, pipeline, revenue, or what you should do next.', ...s }
+  if (includesAny(q, ['this website', 'this app', 'this product', 'website do', 'app do', 'how does it work', 'what can you do', 'feature'])) {
+    return { answer: 'Confidence Arise helps find US business leads, ranks their sales opportunity, analyzes a lead’s website, and manages outreach in a CRM. Find Leads searches by state, city and ZIP with category, contact, website and score filters. Open Analyze on a lead for its website assessment; CRM tracks stages, replies and follow-ups. Command Center summarizes the funnel, History records searches and outreach, and Settings connects email and WhatsApp. I can answer questions about these features and search for leads.', ...s }
+  }
+  if (includesAny(q, ['analyze a website', 'analyze website', 'website analysis', 'lead website'])) {
+    return { answer: 'Yes. Search for a lead in Find Leads, then choose Analyze on its row. The analysis examines available website signals and suggests an outreach angle. If a business has no website, the recommendation is based on that absence rather than a site audit.', ...s }
+  }
   if (includesAny(q, ['what should', 'next action', 'today', 'priority', 'karna', 'kya kar'])) {
     const lines = s.tasks.slice(0,5).map((x,i) => `${i+1}. ${x.title} — ${x.detail}`)
     return { answer: lines.length ? `Your priority queue:\n${lines.join('\n')}` : 'Nothing urgent is due. Generate fresh leads and start with the highest opportunity scores.', ...s }
@@ -106,11 +112,14 @@ export function parseConciergeAction(message) {
   const wantsLeads = /\b(find|generate|search|get|show|give|need)\b/i.test(lower) && /\b(leads?|prospects?|business(?:es)?)\b/i.test(lower)
   if (wantsLeads) {
     const count = Math.min(Number(lower.match(/\b(\d{1,3})\b/)?.[1] || 20), 50)
-    const locationMatch = text.match(/\b(?:in|from|near)\s+([a-z .'-]+?)(?:,\s*([a-z]{2}))?\s*$/i)
+    const anyLocation = /\b(?:any(?:where|\s+(?:us\s+)?state|\s+location|\s+city)?|wherever|you\s+(?:choose|pick)|choose\s+(?:for\s+me|yourself|a\s+city))\b/i.test(lower)
+    const locationMatch = anyLocation ? null : text.match(/\b(?:in|from|near)\s+([a-z .'-]+?),?\s+([a-z]{2})\s*$/i)
     const rawCategory = lower
+      .replace(/\b\d{1,3}\b/g, ' ')
       .replace(/\b(find|generate|search|get|show|give|need|me|some|good|best|high|quality|potential|qualified|hot|new)\b/g, ' ')
       .replace(/\b(leads?|prospects?|business(?:es)?|of|for)\b/g, ' ')
       .replace(/\b(?:in|from|near)\b[\s\S]*$/i, ' ')
+      .replace(/\b(?:any(?:where| state| location| city)?|us state)\b/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
     const aliases = {
@@ -119,14 +128,14 @@ export function parseConciergeAction(message) {
       dentist: 'dentist', dentists: 'dentist', restaurant: 'restaurant', restaurants: 'restaurant',
     }
     const category = aliases[rawCategory] || rawCategory || 'business'
-    if (!locationMatch) return null
     return {
       type: 'lead_search',
       limit: count,
       category,
-      city: locationMatch[1]?.trim() || '',
-      state: String(locationMatch[2] || '').toUpperCase(),
-      needsLocation: false,
+      city: locationMatch?.[1]?.trim() || '',
+      state: String(locationMatch?.[2] || '').toUpperCase(),
+      needsLocation: !anyLocation && !locationMatch,
+      anyLocation,
     }
   }
   return null
