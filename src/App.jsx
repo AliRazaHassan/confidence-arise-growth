@@ -643,7 +643,7 @@ function FindView({ config, onSent }) {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(patch),
+        body: JSON.stringify({ ...patch, business }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'CRM update failed')
