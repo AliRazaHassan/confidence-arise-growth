@@ -416,6 +416,9 @@ app.get('/api/businesses', requireAuth, async (req, res) => {
   const state = String(req.query.state || '').trim().toUpperCase()
   const city = String(req.query.city || '').trim()
   const postalCode = String(req.query.postalCode || '').trim()
+  if (postalCode && !/^\d{5}(?:-\d{4})?$/.test(postalCode)) {
+    return res.status(400).json({ error: 'Enter a valid 5-digit US ZIP code (optionally ZIP+4).' })
+  }
 
   if (!state && !postalCode) {
     return res.status(400).json({ error: 'Select a US state and city (or ZIP).' })
