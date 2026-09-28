@@ -236,7 +236,25 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
   const message = normalizeConciergeInput(req.body?.message)
   const sessionKey = conciergeSessionKey(req)
   const pending = req.body?.pendingAction || conciergePendingActions.get(sessionKey)
-  let action = parseConciergeAction(message)
+  const history = Array.isArray(req.body?.history) ? req.body.history.slice(-12) : []
+  let aiPlan = null
+  try { aiPlan = await answerConciergeAI(message, history) } catch {}
+  let action = null
+  const leadPlan = String(aiPlan?.answer || '').match(/^LEAD_SEARCH\s+({[\s\S]*})\s*$/i)
+  if (leadPlan) {
+    try {
+      const p = JSON.parse(leadPlan[1])
+      action = {
+        type: 'lead_search',
+        category: String(p.category || pending?.category || 'business').trim(),
+        limit: Math.min(Math.max(Number(p.count || pending?.limit || 20), 1), 50),
+        city: String(p.city || '').trim(),
+        state: String(p.state || '').trim().toUpperCase(),
+        anyLocation: Boolean(p.anyLocation),
+        needsLocation: false,
+      }
+    } catch {}
+  }
   if (!action && pending?.type === 'lead_search') {
     const follow = normalizeConciergeInput(message)
     const anyState = /\b(?:any(?:where|\s+(?:us\s+)?state|\s+location|\s+city)?|wherever|you\s+(?:choose|pick)|choose\s+(?:for\s+me|yourself|a\s+city)|best\s+state|usa)\b/i.test(follow)
@@ -286,7 +304,7 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
       return res.status(502).json({ error: err.message || 'Lead search failed' })
     }
   }
-  res.json(await answerConciergeAI(message, Array.isArray(req.body?.history) ? req.body.history : []))
+  res.json(aiPlan || await answerConciergeAI(message, history))
 })
 
 app.post('/api/concierge/context', requireAuth, async (req, res) => {
