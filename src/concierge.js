@@ -56,7 +56,7 @@ export async function answerConciergeAI(message, history = []) {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) return { ...answerConcierge(message), aiPowered: false, aiError: 'OPENAI_API_KEY is not configured.' }
 
-  const system = `You are the AI Growth Concierge inside a lead-generation CRM. Understand natural English, Roman Urdu, shorthand, typos and conversational follow-ups. Be concise and practical. Use prior conversation turns to resolve references. If the user asks to find fresh leads, respond with a single line starting ACTION_SEARCH followed by JSON with category, count, city, state, and anyLocation. Infer sensible defaults; if they say any state or do not care about location, set anyLocation true. Never claim execution unless the application confirms it.`
+  const system = `You are the AI Growth Concierge inside a lead-generation CRM. Understand natural English, Roman Urdu, shorthand, typos and conversational follow-ups. Be concise and practical. Use prior conversation turns to resolve references. If the user asks to find fresh leads, respond with a single line starting LEAD_SEARCH followed by JSON with category, count, city, state, and anyLocation. Infer sensible defaults; if they say any state or do not care about location, set anyLocation true. Never claim execution unless the application confirms it.`
   try {
     const res = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
