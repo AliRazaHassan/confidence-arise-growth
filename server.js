@@ -274,13 +274,14 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
       conciergePendingActions.delete(sessionKey)
       const result = await searchBusinesses({ state: action.state, city: action.city, postalCode: '' })
       const needle = action.category.toLowerCase()
+      const categoryTerms = needle === 'real estate' ? ['real estate', 'estate agent', 'estate_agent', 'realtor', 'realty', 'property management', 'property manager'] : [needle]
       const ranked = result.businesses
-        .filter((b) => !needle || String(b.category || '').toLowerCase().includes(needle) || String(b.name || '').toLowerCase().includes(needle) || String(b.tags?.amenity || '').toLowerCase().includes(needle))
+        .filter((b) => categoryTerms.some((term) => String(b.category || '').toLowerCase().includes(term) || String(b.name || '').toLowerCase().includes(term) || String(b.tags?.amenity || '').toLowerCase().includes(term)))
         .sort((a,b) => Number(b.opportunityScore || 0) - Number(a.opportunityScore || 0))
         .slice(0, action.limit)
       const items = ranked
       recordSearch({ state: action.state, city: action.city, postalCode: '', placeLabel: result.place?.label, count: items.length, by: req.user?.email })
-      return res.json({ ...conciergeSnapshot(), answer: `Found ${items.length} leads for ${action.category} in ${action.city}, ${action.state}${action.autoLocation ? ' (location selected automatically)' : ''}. I ranked them by opportunity score; review the results before outreach.`, aiPowered: false, action: { ...action, status: 'completed', leads: items } })
+      return res.json({ ...conciergeSnapshot(), answer: items.length ? `Found ${items.length} leads for ${action.category} in ${action.city}, ${action.state}${action.autoLocation ? ' (location selected automatically)' : ''}. I ranked them by opportunity score; review the results before outreach.` : `No matching ${action.category} leads with contact information were found in ${action.city}, ${action.state}. Try another city or a broader business category.`, aiPowered: false, action: { ...action, status: 'completed', leads: items } })
     } catch (err) {
       return res.status(502).json({ error: err.message || 'Lead search failed' })
     }
