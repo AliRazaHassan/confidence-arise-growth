@@ -51,12 +51,12 @@ function compactContext(snapshot) {
   }
 }
 
-export async function answerConciergeAI(message) {
+export async function answerConciergeAI(message, history = []) {
   const snapshot = conciergeSnapshot()
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) return { ...answerConcierge(message), aiPowered: false, aiError: 'OPENAI_API_KEY is not configured.' }
 
-  const system = `You are the AI Growth Concierge inside a lead-generation CRM. Be concise, practical and grounded only in the supplied workspace data. Help the operator prioritize leads, replies, follow-ups, pipeline and revenue. Never claim an action was executed unless the application actually executed it. When useful, give a short numbered action plan. If workspace data does not support a claim, say so.`
+  const system = `You are the AI Growth Concierge inside a lead-generation CRM. Understand natural English, Roman Urdu, shorthand, typos and conversational follow-ups. Be concise and practical. Use prior conversation turns to resolve references. If the user asks to find fresh leads, respond with a single line starting ACTION_SEARCH followed by JSON with category, count, city, state, and anyLocation. Infer sensible defaults; if they say any state or do not care about location, set anyLocation true. Never claim execution unless the application confirms it.`
   try {
     const res = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
@@ -65,7 +65,7 @@ export async function answerConciergeAI(message) {
         model: process.env.OPENAI_CONCIERGE_MODEL || 'gpt-5.6-luna',
         input: [
           { role: 'system', content: [{ type: 'input_text', text: system }] },
-          { role: 'user', content: [{ type: 'input_text', text: `Workspace data:\n${JSON.stringify(compactContext(snapshot))}\n\nUser request: ${String(message || '')}` }] },
+          { role: 'user', content: [{ type: 'input_text', text: `Conversation history:\n${JSON.stringify(history.slice(-12))}\n\nWorkspace data:\n${JSON.stringify(compactContext(snapshot))}\n\nUser request: ${String(message || '')}` }] },
         ],
         max_output_tokens: 700,
       }),
