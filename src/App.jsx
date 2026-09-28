@@ -637,15 +637,20 @@ function FindView({ config, onSent }) {
   }
 
   async function saveCRM(business, patch) {
-    const res = await fetch(`/api/crm/lead/${encodeURIComponent(business.id)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(patch),
-    })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(data.error || 'CRM update failed')
-    setCrm(data.crm)
+    if (!business?.id) return setError('This lead could not be updated. Reopen its CRM record.')
+    try {
+      const res = await fetch(`/api/crm/lead/${encodeURIComponent(business.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(patch),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'CRM update failed')
+      setCrm((previous) => ({ ...previous, ...data.crm, business: previous?.business || business }))
+    } catch (err) {
+      setError(err.message || 'CRM update failed')
+    }
   }
 
   async function openCRM(business) {
@@ -942,9 +947,7 @@ function FindView({ config, onSent }) {
             ) : (
               <tr>
                 <td colSpan={8} className="empty-row">
-                  {loading
-                    ? 'Searching outreach-ready leads…'
-                    : 'Pick a state and city, then search.'}
+                  {loading ? 'Searching outreach-ready leads…' : businesses.length ? 'No leads match the current filters.' : error ? 'No results available for this search.' : 'Pick a state and city, then search.'}
                 </td>
               </tr>
             )}
