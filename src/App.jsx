@@ -1049,7 +1049,7 @@ function Concierge() {
     const timer = setInterval(() => setProgress((p) => Math.min(p + Math.max(1, Math.round((92-p)/8)), 92)), 450)
     try {
       const endpoint = selectedContext ? '/api/concierge/context' : '/api/concierge/chat'
-      const payload = selectedContext ? { question: q, context: selectedContext } : { message: q, pendingAction }
+      const payload = selectedContext ? { question: q, context: selectedContext } : { message: q, pendingAction, history: chat.slice(-12) }
       const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Concierge unavailable')
