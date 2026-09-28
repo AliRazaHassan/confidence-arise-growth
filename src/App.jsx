@@ -583,6 +583,7 @@ function FindView({ config, onSent }) {
     setPreview(null)
     if (!state) return setError('Select a state.')
     if (!city && !postalCode.trim()) return setError('Select a city or ZIP.')
+    if (postalCode.trim() && !/^\d{5}(?:-\d{4})?$/.test(postalCode.trim())) return setError('Enter a valid 5-digit US ZIP code (optionally ZIP+4).')
     setLoading(true)
     try {
       const params = new URLSearchParams({ state, city, postalCode: postalCode.trim() })
