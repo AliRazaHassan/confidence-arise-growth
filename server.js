@@ -239,7 +239,7 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
   let action = parseConciergeAction(message)
   if (!action && pending?.type === 'lead_search') {
     const follow = normalizeConciergeInput(message)
-    const anyState = /^(any|any state|anywhere|you choose|choose|best state|anywhere in usa|usa)$/i.test(follow)
+    const anyState = /\b(?:any(?:where|\s+(?:us\s+)?state|\s+location|\s+city)?|wherever|you\s+(?:choose|pick)|choose\s+(?:for\s+me|yourself|a\s+city)|best\s+state|usa)\b/i.test(follow)
     if (anyState) {
       const defaults = [
         ['Miami', 'FL'], ['Austin', 'TX'], ['Phoenix', 'AZ'], ['Atlanta', 'GA'],
@@ -261,6 +261,11 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
     }
   }
   if (action?.type === 'lead_search') {
+    if (action.anyLocation) {
+      const defaults = [['Miami', 'FL'], ['Austin', 'TX'], ['Phoenix', 'AZ'], ['Atlanta', 'GA'], ['Charlotte', 'NC'], ['Dallas', 'TX'], ['Orlando', 'FL'], ['Denver', 'CO']]
+      const [city, state] = defaults[Math.abs(String(action.category || '').length) % defaults.length]
+      action = { ...action, city, state, needsLocation: false, autoLocation: true }
+    }
     if (action.needsLocation || !action.city || !action.state) {
       conciergePendingActions.set(sessionKey, action)
       return res.json({ ...conciergeSnapshot(), answer: `Sure — I can find and rank ${action.category} leads. Which US city and state should I search? Example: "Miami, FL" or "Austin, TX".`, aiPowered: false, action: { ...action, status: 'needs_input', missing: ['city', 'state'] } })
@@ -273,7 +278,7 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
         .filter((b) => !needle || String(b.category || '').toLowerCase().includes(needle) || String(b.name || '').toLowerCase().includes(needle) || String(b.tags?.amenity || '').toLowerCase().includes(needle))
         .sort((a,b) => Number(b.opportunityScore || 0) - Number(a.opportunityScore || 0))
         .slice(0, action.limit)
-      const items = ranked.length ? ranked : result.businesses.slice(0, action.limit)
+      const items = ranked
       recordSearch({ state: action.state, city: action.city, postalCode: '', placeLabel: result.place?.label, count: items.length, by: req.user?.email })
       return res.json({ ...conciergeSnapshot(), answer: `Found ${items.length} leads for ${action.category} in ${action.city}, ${action.state}${action.autoLocation ? ' (location selected automatically)' : ''}. I ranked them by opportunity score; review the results before outreach.`, aiPowered: false, action: { ...action, status: 'completed', leads: items } })
     } catch (err) {
