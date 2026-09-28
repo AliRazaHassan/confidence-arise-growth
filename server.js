@@ -234,11 +234,13 @@ app.get('/api/concierge/snapshot', requireAuth, (_req, res) => {
 
 app.post('/api/concierge/chat', requireAuth, async (req, res) => {
   const message = normalizeConciergeInput(req.body?.message)
+  console.log('[concierge] request', { message, historyCount: Array.isArray(req.body?.history) ? req.body.history.length : 0 })
   const sessionKey = conciergeSessionKey(req)
   const pending = req.body?.pendingAction || conciergePendingActions.get(sessionKey)
   const history = Array.isArray(req.body?.history) ? req.body.history.slice(-12) : []
   let aiPlan = null
-  try { aiPlan = await answerConciergeAI(message, history) } catch {}
+  try { aiPlan = await answerConciergeAI(message, history) } catch (err) { console.error('[concierge] AI planning error', err.message) }
+  if (aiPlan?.aiError) console.error('[concierge] AI fallback', aiPlan.aiError)
   let action = null
   const leadPlan = String(aiPlan?.answer || '').match(/^LEAD_SEARCH\s+({[\s\S]*})\s*$/i)
   if (leadPlan) {
