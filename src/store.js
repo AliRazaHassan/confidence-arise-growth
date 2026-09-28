@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url'
 import { analyzeReply, suggestedReply } from './replyIntelligence.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const DATA_DIR = path.join(__dirname, '..', 'data')
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data')
 const SEARCHES_FILE = path.join(DATA_DIR, 'searches.json')
 const SUBMISSIONS_FILE = path.join(DATA_DIR, 'submissions.json')
 const LEADS_FILE = path.join(DATA_DIR, 'leads.json')
@@ -74,25 +74,23 @@ export function recordSubmission(entry) {
   rows.unshift(full)
   writeJson(SUBMISSIONS_FILE, rows.slice(0, MAX_SUBMISSIONS))
 
-  // Upsert lead contact history
-  if (entry.businessId || entry.businessName) {
+  // A preview or failed attempt must not count as a contacted lead.
+  if (entry.status === 'sent' && (entry.businessId || entry.businessName)) {
     const leadId = entry.businessId || entry.businessName
     const crm = readJson(CRM_FILE, {})
     const prevCrm = crm[leadId] || {}
-    if (entry.status === 'sent') {
-      const contactedAt = new Date()
-      const firstFollowUp = new Date(contactedAt)
-      firstFollowUp.setUTCDate(firstFollowUp.getUTCDate() + 3)
-      crm[leadId] = {
-        ...prevCrm,
-        id: leadId,
-        status: prevCrm.status && prevCrm.status !== 'new' ? prevCrm.status : 'contacted',
-        followUpCount: prevCrm.followUpCount || 0,
-        nextFollowUpAt: prevCrm.nextFollowUpAt || firstFollowUp.toISOString(),
-        updatedAt: contactedAt.toISOString(),
-      }
-      writeJson(CRM_FILE, crm)
+    const contactedAt = new Date()
+    const firstFollowUp = new Date(contactedAt)
+    firstFollowUp.setUTCDate(firstFollowUp.getUTCDate() + 3)
+    crm[leadId] = {
+      ...prevCrm,
+      id: leadId,
+      status: prevCrm.status && prevCrm.status !== 'new' ? prevCrm.status : 'contacted',
+      followUpCount: prevCrm.followUpCount || 0,
+      nextFollowUpAt: prevCrm.nextFollowUpAt || firstFollowUp.toISOString(),
+      updatedAt: contactedAt.toISOString(),
     }
+    writeJson(CRM_FILE, crm)
     upsertLead({
       id: entry.businessId || entry.businessName,
       name: entry.businessName,
@@ -112,7 +110,7 @@ export function recordBatchSubmissions(items) {
   return items.map((item) => recordSubmission(item))
 }
 
-export function updateLeadCRM({ id, status, notes, nextFollowUpAt, outcome, followUpCount, lastFollowUpAt, dealValue }) {
+export function updateLeadCRM({ id, business, status, notes, nextFollowUpAt, outcome, followUpCount, lastFollowUpAt, dealValue }) {
   if (!id) return null
   const map = readJson(CRM_FILE, {})
   const prev = map[id] || {}
@@ -130,6 +128,7 @@ export function updateLeadCRM({ id, status, notes, nextFollowUpAt, outcome, foll
   }
   map[id] = next
   writeJson(CRM_FILE, map)
+  if (business?.name) ensureLead({ id, name: business.name, email: business.email || null, phone: business.phone || null, address: business.address || null })
   return next
 }
 
@@ -212,6 +211,12 @@ function upsertLead(lead) {
     writeJson(LEADS_FILE, next)
     return
   }
+  writeJson(LEADS_FILE, map)
+}
+
+function ensureLead(lead) {
+  const map = readJson(LEADS_FILE, {})
+  map[lead.id] = { ...map[lead.id], ...lead, contactCount: map[lead.id]?.contactCount || 0, updatedAt: new Date().toISOString() }
   writeJson(LEADS_FILE, map)
 }
 
