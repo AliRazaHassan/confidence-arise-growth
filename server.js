@@ -39,6 +39,15 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
+const conciergePendingActions = new Map()
+
+function normalizeConciergeInput(value) {
+  return String(value || '').normalize('NFKC').trim().replace(/\s+/g, ' ')
+}
+
+function conciergeSessionKey(req) {
+  return String(req.user?.email || req.ip || 'default').toLowerCase()
+}
 const PORT = process.env.PORT || 4174
 
 app.use(express.json({
@@ -224,11 +233,12 @@ app.get('/api/concierge/snapshot', requireAuth, (_req, res) => {
 })
 
 app.post('/api/concierge/chat', requireAuth, async (req, res) => {
-  const message = String(req.body?.message || '').trim()
-  const pending = req.body?.pendingAction
+  const message = normalizeConciergeInput(req.body?.message)
+  const sessionKey = conciergeSessionKey(req)
+  const pending = req.body?.pendingAction || conciergePendingActions.get(sessionKey)
   let action = parseConciergeAction(message)
   if (!action && pending?.type === 'lead_search') {
-    const follow = message.trim()
+    const follow = normalizeConciergeInput(message)
     const anyState = /^(any|any state|anywhere|you choose|choose|best state|anywhere in usa|usa)$/i.test(follow)
     if (anyState) {
       const defaults = [
@@ -251,8 +261,12 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
     }
   }
   if (action?.type === 'lead_search') {
-    if (action.needsLocation || !action.city || !action.state) return res.json({ ...conciergeSnapshot(), answer: `Sure — I can find and rank ${action.category} leads. Which US city and state should I search? Example: "Miami, FL" or "Austin, TX".`, aiPowered: false, action: { ...action, status: 'needs_input', missing: ['city', 'state'] } })
+    if (action.needsLocation || !action.city || !action.state) {
+      conciergePendingActions.set(sessionKey, action)
+      return res.json({ ...conciergeSnapshot(), answer: `Sure — I can find and rank ${action.category} leads. Which US city and state should I search? Example: "Miami, FL" or "Austin, TX".`, aiPowered: false, action: { ...action, status: 'needs_input', missing: ['city', 'state'] } })
+    }
     try {
+      conciergePendingActions.delete(sessionKey)
       const result = await searchBusinesses({ state: action.state, city: action.city, postalCode: '' })
       const needle = action.category.toLowerCase()
       const ranked = result.businesses
