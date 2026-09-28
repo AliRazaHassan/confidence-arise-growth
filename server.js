@@ -270,6 +270,7 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
       if (loc) action = { ...pending, city: loc[1].trim(), state: loc[2].toUpperCase(), needsLocation: false }
     }
   }
+  if (!action) action = parseConciergeAction(message)
   if (action?.type === 'sync_replies') {
     try {
       const summary = await syncEmailReplies({ maxMessages: 50 })
