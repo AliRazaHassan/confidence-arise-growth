@@ -588,7 +588,7 @@ function FindView({ config, onSent }) {
     try {
       const params = new URLSearchParams({ state, city, postalCode: postalCode.trim() })
       const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 40000)
+      const timer = setTimeout(() => controller.abort(), 58000)
       const res = await fetch(`/api/businesses?${params}`, {
         signal: controller.signal,
         credentials: 'include',
