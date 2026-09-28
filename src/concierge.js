@@ -112,14 +112,14 @@ export function parseConciergeAction(message) {
   const wantsLeads = /\b(find|generate|search|get|show|give|need)\b/i.test(lower) && /\b(leads?|prospects?|business(?:es)?)\b/i.test(lower)
   if (wantsLeads) {
     const count = Math.min(Number(lower.match(/\b(\d{1,3})\b/)?.[1] || 20), 50)
-    const anyLocation = /\b(?:any(?:where|\s+(?:us\s+)?state|\s+location|\s+city)?|wherever|you\s+(?:choose|pick)|choose\s+(?:for\s+me|yourself|a\s+city))\b/i.test(lower)
+    const anyLocation = /\b(?:any(?:where|\s+(?:us\s+)?state|\s+location|\s+city)?|wherever|you\s+(?:choose|pick)|choose\s+(?:for\s+me|yourself|a\s+city)|kahin\s+(?:se|sy)\s+bhi|kahi\s+(?:se|sy)\s+bhi)\b/i.test(lower)
     const locationMatch = anyLocation ? null : text.match(/\b(?:in|from|near)\s+([a-z .'-]+?),?\s+([a-z]{2})\s*$/i)
     const rawCategory = lower
       .replace(/\b\d{1,3}\b/g, ' ')
       .replace(/\b(find|generate|search|get|show|give|need|me|some|good|best|high|quality|potential|qualified|hot|new)\b/g, ' ')
       .replace(/\b(leads?|prospects?|business(?:es)?|of|for)\b/g, ' ')
       .replace(/\b(?:in|from|near)\b[\s\S]*$/i, ' ')
-      .replace(/\b(?:any(?:where| state| location| city)?|us state)\b/g, ' ')
+      .replace(/\b(?:any(?:where| state| location| city)?|us state|kahin\s+(?:se|sy)\s+bhi|kahi\s+(?:se|sy)\s+bhi|mujhy|mujhe|mujhay|krdo|kardo|kar\s+do|dhund\s+do|dhoond\s+do)\b/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
     const aliases = {
