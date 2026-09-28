@@ -280,7 +280,7 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
       return res.status(502).json({ error: err.message || 'Lead search failed' })
     }
   }
-  res.json(await answerConciergeAI(message))
+  res.json(await answerConciergeAI(message, Array.isArray(req.body?.history) ? req.body.history : []))
 })
 
 app.post('/api/concierge/context', requireAuth, async (req, res) => {
