@@ -200,7 +200,7 @@ export async function discoverWebBusinesses({ place, city, state, categories = O
     if (!domain || seenDomains.has(domain)) return false
     seenDomains.add(domain)
     return true
-  }).slice(0, MAX_WEB_RESULTS)
+  }).slice(0, MAX_WEBSITE_ENRICH)
 
   const enriched = await limitedMap(results, 6, enrichWebsite)
 
