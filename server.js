@@ -345,7 +345,10 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
       let result = null
       for (const [marketCity, marketState] of markets) {
         try {
-          const found = await searchBusinesses({ state: marketState, city: marketCity, postalCode: '' })
+          const found = await Promise.race([
+            searchBusinesses({ state: marketState, city: marketCity, postalCode: '' }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Market search timeout')), 18000)),
+          ])
           if (!result) result = found
           const matches = found.businesses.filter((b) => categoryTerms.some((term) => String(b.category || '').toLowerCase().includes(term) || String(b.name || '').toLowerCase().includes(term)))
           for (const b of matches) {
