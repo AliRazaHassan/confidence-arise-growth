@@ -89,7 +89,7 @@ export async function answerConciergeAI(message, history = [], continuation = nu
     const toolCalls = (data.output || []).filter((x) => x.type === 'function_call').map((x) => ({ name: x.name, callId: x.call_id, arguments: x.arguments }))
     const answer = data.output_text || data.output?.flatMap((x) => x.content || []).find((x) => x.type === 'output_text')?.text || ''
     if (!answer && !toolCalls.length) throw new Error('OpenAI returned no response.')
-    return { ...snapshot, answer, aiPowered: true, toolCalls, responseOutput: data.output || [] }
+    return { ...snapshot, answer, aiPowered: true, toolCalls, responseOutput: data.output || [], responseId: data.id }
   } catch (err) {
     return { ...answerConcierge(message), aiPowered: false, aiError: err.message }
   }
