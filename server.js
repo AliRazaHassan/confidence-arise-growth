@@ -302,7 +302,15 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
         .slice(0, action.limit)
       const items = ranked
       recordSearch({ state: action.state, city: action.city, postalCode: '', placeLabel: result.place?.label, count: items.length, by: req.user?.email })
-      return res.json({ ...conciergeSnapshot(), answer: items.length ? `Found ${items.length} leads for ${action.category} in ${action.city}, ${action.state}${action.autoLocation ? ' (location selected automatically)' : ''}. I ranked them by opportunity score; review the results before outreach.` : `No matching ${action.category} leads with contact information were found in ${action.city}, ${action.state}. Try another city or a broader business category.`, aiPowered: false, action: { ...action, status: 'completed', leads: items } })
+      return res.json({
+        ...conciergeSnapshot(),
+        answer: items.length
+          ? `I found ${items.length} ${action.category} leads and opened them in Find Leads, ranked by opportunity score.`
+          : `No matching ${action.category} leads with contact information were found in ${action.city}, ${action.state}. Try another market.`,
+        aiPowered: Boolean(aiPlan?.aiPowered),
+        action: { ...action, status: 'completed', leadCount: items.length },
+        ui: items.length ? { nav: 'find', payload: { leads: items, city: action.city, state: action.state, placeLabel: result.place?.label || `${action.city}, ${action.state}`, quality: result.quality || null, category: action.category } } : null,
+      })
     } catch (err) {
       return res.status(502).json({ error: err.message || 'Lead search failed' })
     }
