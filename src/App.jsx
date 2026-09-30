@@ -92,8 +92,9 @@ function LoginScreen({ onLoggedIn }) {
   )
 }
 
-function HistoryView() {
-  const [tab, setTab] = useState('submissions')
+function HistoryView({ initialTab = 'submissions' }) {
+  const [tab, setTab] = useState(initialTab)
+  useEffect(() => { if (initialTab) setTab(initialTab) }, [initialTab])
   const [searches, setSearches] = useState([])
   const [submissions, setSubmissions] = useState([])
   const [leads, setLeads] = useState([])
@@ -1101,6 +1102,7 @@ export default function App() {
   const [config, setConfig] = useState(null)
   const [historyKey, setHistoryKey] = useState(0)
   const [agentFindPayload, setAgentFindPayload] = useState(null)
+  const [agentHistoryTab, setAgentHistoryTab] = useState('submissions')
 
   useEffect(() => {
     fetch('/api/auth/me', { credentials: 'include' })
@@ -1126,6 +1128,7 @@ export default function App() {
         setAgentFindPayload({ ...(ui.payload || {}), receivedAt: Date.now() })
         setNav('find')
       } else if (ui.nav === 'history') {
+        setAgentHistoryTab(ui.tab || 'submissions')
         setHistoryKey((k) => k + 1)
         setNav('history')
       } else if (ui.nav === 'dashboard') {
@@ -1197,7 +1200,7 @@ export default function App() {
         ) : nav === 'settings' ? (
           <SettingsView config={config} onSaved={() => setHistoryKey((k) => k + 1)} />
         ) : (
-          <HistoryView key={historyKey} />
+          <HistoryView key={historyKey} initialTab={agentHistoryTab} />
         )}
       </main>
       <Concierge />
