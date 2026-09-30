@@ -57,7 +57,7 @@ function compactContext(snapshot) {
   }
 }
 
-export async function answerConciergeAI(message, history = []) {
+export async function answerConciergeAI(message, history = [], continuation = null) {
   const snapshot = conciergeSnapshot()
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) return { ...answerConcierge(message), aiPowered: false, aiError: 'OPENAI_API_KEY is not configured.' }
@@ -69,12 +69,13 @@ export async function answerConciergeAI(message, history = []) {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
         model: process.env.OPENAI_CONCIERGE_MODEL || 'gpt-5.6-luna',
-        input: [
+        input: continuation?.input || [
           { role: 'system', content: [{ type: 'input_text', text: system }] },
-          { role: 'user', content: [{ type: 'input_text', text: `Conversation history:\n${JSON.stringify(history.slice(-12))}\n\nWorkspace data:\n${JSON.stringify(compactContext(snapshot))}\n\nUser request: ${String(message || '')}` }] },
+          { role: 'user', content: [{ type: 'input_text', text: `Conversation history:\n${JSON.stringify(history.slice(-16))}\n\nWorkspace data:\n${JSON.stringify(compactContext(snapshot))}\n\nUser request: ${String(message || '')}` }] },
         ],
         tools: [
           { type: 'function', name: 'search_leads', description: 'Find fresh leads. Use anywhere_us for any-state or anywhere requests.', strict: true, parameters: { type: 'object', properties: { category: { type: 'string' }, count: { type: 'integer', minimum: 1, maximum: 50 }, city: { type: ['string','null'] }, state: { type: ['string','null'] }, anywhere_us: { type: 'boolean' }, require_email: { type: 'boolean' }, require_phone: { type: 'boolean' } }, required: ['category','count','city','state','anywhere_us','require_email','require_phone'], additionalProperties: false } },
+          { type: 'function', name: 'get_recent_leads', description: 'Read or filter the latest lead result set. Use for references such as them, those, top N, email-only, phone-only, or a numbered lead.', strict: true, parameters: { type: 'object', properties: { limit: { type: 'integer', minimum: 1, maximum: 50 }, require_email: { type: 'boolean' }, require_phone: { type: 'boolean' } }, required: ['limit','require_email','require_phone'], additionalProperties: false } },
           { type: 'function', name: 'get_pipeline', description: 'Read current CRM pipeline metrics.', strict: true, parameters: { type: 'object', properties: {}, required: [], additionalProperties: false } },
           { type: 'function', name: 'get_due_followups', description: 'Read due CRM follow-ups.', strict: true, parameters: { type: 'object', properties: { limit: { type: 'integer', minimum: 1, maximum: 100 } }, required: ['limit'], additionalProperties: false } },
           { type: 'function', name: 'open_workspace', description: 'Open the relevant website workspace.', strict: true, parameters: { type: 'object', properties: { workspace: { type: 'string', enum: ['find','history','dashboard','settings'] }, tab: { type: ['string','null'] } }, required: ['workspace','tab'], additionalProperties: false } },
