@@ -255,6 +255,7 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
         state: String(p.state || '').trim().toUpperCase(),
         anyLocation: Boolean(p.anyLocation),
         needsLocation: false,
+        sendMessages: Boolean(p.sendMessages),
       }
     } catch {}
   }
