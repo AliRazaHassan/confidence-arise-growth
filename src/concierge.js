@@ -73,14 +73,22 @@ export async function answerConciergeAI(message, history = []) {
           { role: 'system', content: [{ type: 'input_text', text: system }] },
           { role: 'user', content: [{ type: 'input_text', text: `Conversation history:\n${JSON.stringify(history.slice(-12))}\n\nWorkspace data:\n${JSON.stringify(compactContext(snapshot))}\n\nUser request: ${String(message || '')}` }] },
         ],
+        tools: [
+          { type: 'function', name: 'search_leads', description: 'Find fresh leads. Use anywhere_us for any-state or anywhere requests.', strict: true, parameters: { type: 'object', properties: { category: { type: 'string' }, count: { type: 'integer', minimum: 1, maximum: 50 }, city: { type: ['string','null'] }, state: { type: ['string','null'] }, anywhere_us: { type: 'boolean' }, require_email: { type: 'boolean' }, require_phone: { type: 'boolean' } }, required: ['category','count','city','state','anywhere_us','require_email','require_phone'], additionalProperties: false } },
+          { type: 'function', name: 'get_pipeline', description: 'Read current CRM pipeline metrics.', strict: true, parameters: { type: 'object', properties: {}, required: [], additionalProperties: false } },
+          { type: 'function', name: 'get_due_followups', description: 'Read due CRM follow-ups.', strict: true, parameters: { type: 'object', properties: { limit: { type: 'integer', minimum: 1, maximum: 100 } }, required: ['limit'], additionalProperties: false } },
+          { type: 'function', name: 'open_workspace', description: 'Open the relevant website workspace.', strict: true, parameters: { type: 'object', properties: { workspace: { type: 'string', enum: ['find','history','dashboard','settings'] }, tab: { type: ['string','null'] } }, required: ['workspace','tab'], additionalProperties: false } },
+        ],
+        tool_choice: 'auto',
         max_output_tokens: 700,
       }),
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data?.error?.message || `OpenAI API ${res.status}`)
-    const answer = data.output_text || data.output?.flatMap((x) => x.content || []).find((x) => x.type === 'output_text')?.text
-    if (!answer) throw new Error('OpenAI returned no text response.')
-    return { ...snapshot, answer, aiPowered: true }
+    const toolCalls = (data.output || []).filter((x) => x.type === 'function_call').map((x) => ({ name: x.name, callId: x.call_id, arguments: x.arguments }))
+    const answer = data.output_text || data.output?.flatMap((x) => x.content || []).find((x) => x.type === 'output_text')?.text || ''
+    if (!answer && !toolCalls.length) throw new Error('OpenAI returned no response.')
+    return { ...snapshot, answer, aiPowered: true, toolCalls, responseOutput: data.output || [] }
   } catch (err) {
     return { ...answerConcierge(message), aiPowered: false, aiError: err.message }
   }
