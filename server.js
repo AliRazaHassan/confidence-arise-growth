@@ -274,6 +274,20 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
     }
   }
   if (!action) action = parseConciergeAction(message)
+  const marker = String(aiPlan?.answer || '').trim().toUpperCase()
+  if (!action && marker === 'SHOW_FOLLOWUPS') {
+    const items = listDueFollowUps(new Date(), 100)
+    return res.json({ ...conciergeSnapshot(), answer: items.length ? `I found ${items.length} due follow-up(s) and opened them in History.` : 'There are no due follow-ups right now.', aiPowered: Boolean(aiPlan?.aiPowered), action: { type: 'show_followups', status: 'completed', count: items.length }, ui: { nav: 'history', tab: 'followups' } })
+  }
+  if (!action && marker === 'SEND_LAST_LEADS') {
+    const items = conciergeRecentLeads.get(sessionKey) || []
+    return res.json({ ...conciergeSnapshot(), answer: items.length ? 'I opened your recent leads in Find Leads. Outreach stays attached to the website records.' : 'There are no recent lead results yet. Ask me to find leads first.', aiPowered: Boolean(aiPlan?.aiPowered), action: { type: 'open_last_leads', status: 'completed', count: items.length }, ui: items.length ? { nav: 'find', payload: { leads: items } } : null })
+  }
+  if (!action && marker === 'SEND_FOLLOWUPS') {
+    const items = listDueFollowUps(new Date(), 100)
+    return res.json({ ...conciergeSnapshot(), answer: items.length ? `I found ${items.length} due follow-up(s) and opened the Follow-ups workspace.` : 'There are no due follow-ups right now.', aiPowered: Boolean(aiPlan?.aiPowered), action: { type: 'open_followups', status: 'completed', count: items.length }, ui: { nav: 'history', tab: 'followups' } })
+  }
+
   if (action?.type === 'sync_replies') {
     try {
       const summary = await syncEmailReplies({ maxMessages: 50 })
