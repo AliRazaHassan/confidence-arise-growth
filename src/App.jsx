@@ -524,7 +524,7 @@ function SettingsView({ config, onSaved }) {
   )
 }
 
-function FindView({ config, onSent }) {
+function FindView({ config, onSent, agentPayload }) {
   const [state, setState] = useState('TX')
   const [city, setCity] = useState('')
   const [postalCode, setPostalCode] = useState('')
@@ -548,6 +548,18 @@ function FindView({ config, onSent }) {
   const [minScore, setMinScore] = useState(0)
   const [q, setQ] = useState('')
   const [crm, setCrm] = useState(null)
+
+  useEffect(() => {
+    if (!agentPayload?.leads) return
+    if (agentPayload.state) setState(agentPayload.state)
+    if (agentPayload.city) setCity(agentPayload.city)
+    setBusinesses(agentPayload.leads)
+    setPlaceLabel(agentPayload.placeLabel || [agentPayload.city, agentPayload.state].filter(Boolean).join(', '))
+    setQuality(agentPayload.quality || null)
+    setSelected(new Set())
+    setLastSend(null)
+    setPreview(null)
+  }, [agentPayload])
 
   const stateCities = useMemo(() => citiesForState(state), [state])
 
@@ -1058,6 +1070,7 @@ function Concierge() {
       let data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Concierge unavailable')
       setTasks(data.tasks || [])
+      if (data.ui) window.dispatchEvent(new CustomEvent('concierge-ui', { detail: data.ui }))
       if (data.action?.leads) setActionLeads(data.action.leads)
       if (data.action?.status === 'needs_input') setPendingAction(data.action)
       else if (data.action?.status === 'completed') setPendingAction(null)
@@ -1076,7 +1089,6 @@ function Concierge() {
       <div className="concierge-quick">{['What should I do today?', 'Show hot leads', 'Follow-ups due?', 'Pipeline status', 'Sync email replies'].map((q) => <button type="button" key={q} onClick={() => ask(q)}>{q}</button>)}</div>
       {tasks.length ? <div className="concierge-tasks"><strong>Priority queue</strong>{tasks.slice(0,3).map((t,i) => <div className="concierge-task" key={t.leadId || i}><span>{t.priority}</span><div><b>{t.title}</b><small>{t.detail}</small></div></div>)}</div> : null}
       <div className="concierge-chat">{chat.map((m,i) => <div key={i} className={'concierge-msg ' + m.role}>{m.text}</div>)}{busy ? <div className="concierge-msg assistant">Working…</div> : null}</div>
-      {actionLeads.length ? <div className="agent-results"><strong>Agent results</strong>{actionLeads.slice(0,10).map((b) => <div className="agent-lead" key={b.id}><div><b>{b.name}</b><small>{b.address || b.category}</small></div><span>{b.opportunityScore || 0}/100</span><button type="button" onClick={() => window.dispatchEvent(new CustomEvent('ask-concierge',{detail:{context:b,prompt:'How should I pitch ' + b.name + '?'}}))}>Ask AI</button></div>)}</div> : null}
       <form className="concierge-input" onSubmit={(e) => { e.preventDefault(); ask() }}><input value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Try: Find 20 dentists leads in Austin, TX" /><button className="btn-primary tiny" disabled={busy}>Ask</button></form>
     </aside> : null}
   </>
@@ -1088,6 +1100,7 @@ export default function App() {
   const [nav, setNav] = useState('dashboard')
   const [config, setConfig] = useState(null)
   const [historyKey, setHistoryKey] = useState(0)
+  const [agentFindPayload, setAgentFindPayload] = useState(null)
 
   useEffect(() => {
     fetch('/api/auth/me', { credentials: 'include' })
@@ -1105,6 +1118,23 @@ export default function App() {
       .then(setConfig)
       .catch(() => {})
   }, [user, historyKey])
+
+  useEffect(() => {
+    const handler = (e) => {
+      const ui = e.detail || {}
+      if (ui.nav === 'find') {
+        setAgentFindPayload({ ...(ui.payload || {}), receivedAt: Date.now() })
+        setNav('find')
+      } else if (ui.nav === 'history') {
+        setHistoryKey((k) => k + 1)
+        setNav('history')
+      } else if (ui.nav === 'dashboard') {
+        setNav('dashboard')
+      }
+    }
+    window.addEventListener('concierge-ui', handler)
+    return () => window.removeEventListener('concierge-ui', handler)
+  }, [])
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
@@ -1162,6 +1192,7 @@ export default function App() {
           <FindView
             config={config}
             onSent={() => setHistoryKey((k) => k + 1)}
+            agentPayload={agentFindPayload}
           />
         ) : nav === 'settings' ? (
           <SettingsView config={config} onSaved={() => setHistoryKey((k) => k + 1)} />
