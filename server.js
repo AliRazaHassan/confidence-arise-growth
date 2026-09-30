@@ -243,6 +243,33 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
   try { aiPlan = await answerConciergeAI(message, history) } catch (err) { console.error('[concierge] AI planning error', err.message) }
   if (aiPlan?.aiError) console.error('[concierge] AI fallback', aiPlan.aiError)
   let action = null
+  const nativeCall = aiPlan?.toolCalls?.[0]
+  if (nativeCall) {
+    let args = {}
+    try { args = JSON.parse(nativeCall.arguments || '{}') } catch {}
+    if (nativeCall.name === 'search_leads') {
+      action = {
+        type: 'lead_search',
+        category: String(args.category || 'business').trim(),
+        limit: Math.min(Math.max(Number(args.count || 20), 1), 50),
+        city: String(args.city || '').trim(),
+        state: String(args.state || '').trim().toUpperCase(),
+        anyLocation: Boolean(args.anywhere_us),
+        requireEmail: Boolean(args.require_email),
+        requirePhone: Boolean(args.require_phone),
+        needsLocation: !args.anywhere_us && (!args.city || !args.state),
+        nativeTool: true,
+      }
+    } else if (nativeCall.name === 'get_pipeline') {
+      return res.json({ ...conciergeSnapshot(), answer: aiPlan.answer || 'I opened the current pipeline overview.', aiPowered: true, action: { type: 'pipeline', status: 'completed' }, ui: { nav: 'dashboard' } })
+    } else if (nativeCall.name === 'get_due_followups') {
+      const items = listDueFollowUps(new Date(), Math.min(Number(args.limit || 100), 100))
+      return res.json({ ...conciergeSnapshot(), answer: items.length ? `${items.length} follow-up(s) are due. I opened them in History.` : 'No follow-ups are due right now.', aiPowered: true, action: { type: 'followups', status: 'completed', count: items.length }, ui: { nav: 'history', tab: 'followups' } })
+    } else if (nativeCall.name === 'open_workspace') {
+      const nav = ['find','history','dashboard','settings'].includes(args.workspace) ? args.workspace : 'dashboard'
+      return res.json({ ...conciergeSnapshot(), answer: aiPlan.answer || `Opened ${nav}.`, aiPowered: true, action: { type: 'navigate', status: 'completed' }, ui: { nav, tab: args.tab || null } })
+    }
+  }
   const leadPlan = String(aiPlan?.answer || '').match(/^LEAD_SEARCH\s+({[\s\S]*})\s*$/i)
   if (leadPlan) {
     try {
@@ -309,14 +336,31 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
     }
     try {
       conciergePendingActions.delete(sessionKey)
-      const result = await searchBusinesses({ state: action.state, city: action.city, postalCode: '' })
       const needle = action.category.toLowerCase()
       const categoryTerms = needle === 'real estate' ? ['real estate', 'estate agent', 'estate_agent', 'realtor', 'realty', 'property management', 'property manager'] : [needle]
-      const ranked = result.businesses
-        .filter((b) => categoryTerms.some((term) => String(b.category || '').toLowerCase().includes(term) || String(b.name || '').toLowerCase().includes(term) || String(b.tags?.amenity || '').toLowerCase().includes(term)))
-        .sort((a,b) => Number(b.opportunityScore || 0) - Number(a.opportunityScore || 0))
-        .slice(0, action.limit)
-      const items = ranked
+      const markets = action.anyLocation
+        ? [['Austin','TX'],['Miami','FL'],['Phoenix','AZ'],['Atlanta','GA'],['Dallas','TX'],['Charlotte','NC'],['Denver','CO'],['Orlando','FL']]
+        : [[action.city, action.state]]
+      const collected = []
+      let result = null
+      for (const [marketCity, marketState] of markets) {
+        try {
+          const found = await searchBusinesses({ state: marketState, city: marketCity, postalCode: '' })
+          if (!result) result = found
+          const matches = found.businesses.filter((b) => categoryTerms.some((term) => String(b.category || '').toLowerCase().includes(term) || String(b.name || '').toLowerCase().includes(term)))
+          for (const b of matches) {
+            if (action.requireEmail && !b.email) continue
+            if (action.requirePhone && !b.phone) continue
+            if (!collected.some((x) => x.id === b.id || (x.email && x.email === b.email) || (x.phone && x.phone === b.phone))) collected.push({ ...b, market: `${marketCity}, ${marketState}` })
+          }
+          if (collected.length >= action.limit) break
+        } catch {}
+      }
+      if (!result) throw new Error('No searchable market returned results.')
+      const items = collected.sort((a,b) => Number(b.opportunityScore || 0) - Number(a.opportunityScore || 0)).slice(0, action.limit)
+      if (action.anyLocation && items.length) {
+        action = { ...action, city: 'Multiple markets', state: 'US', autoLocation: true }
+      }
       conciergeRecentLeads.set(sessionKey, items)
       recordSearch({ state: action.state, city: action.city, postalCode: '', placeLabel: result.place?.label, count: items.length, by: req.user?.email })
       return res.json({
