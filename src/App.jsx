@@ -1068,8 +1068,14 @@ function Concierge() {
       const endpoint = selectedContext ? '/api/concierge/context' : '/api/concierge/chat'
       const payload = selectedContext ? { question: q, context: selectedContext } : { message: q, pendingAction, history: chat.slice(-12) }
       const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) })
-      let data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Concierge unavailable')
+      const contentType = res.headers.get('content-type') || ''
+      const raw = await res.text()
+      let data = {}
+      if (contentType.includes('application/json')) {
+        try { data = raw ? JSON.parse(raw) : {} } catch {}
+      }
+      if (!res.ok) throw new Error(data.error || `Concierge unavailable (HTTP ${res.status})`)
+      if (!contentType.includes('application/json')) throw new Error(`Concierge returned an invalid response (HTTP ${res.status}). Please retry.`)
       setTasks(data.tasks || [])
       if (data.ui) window.dispatchEvent(new CustomEvent('concierge-ui', { detail: data.ui }))
       if (data.action?.leads) setActionLeads(data.action.leads)
