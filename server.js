@@ -40,6 +40,7 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
 const conciergePendingActions = new Map()
+const conciergeRecentLeads = new Map()
 
 function normalizeConciergeInput(value) {
   return String(value || '').normalize('NFKC').trim().replace(/\s+/g, ' ')
@@ -301,6 +302,7 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
         .sort((a,b) => Number(b.opportunityScore || 0) - Number(a.opportunityScore || 0))
         .slice(0, action.limit)
       const items = ranked
+      conciergeRecentLeads.set(sessionKey, items)
       recordSearch({ state: action.state, city: action.city, postalCode: '', placeLabel: result.place?.label, count: items.length, by: req.user?.email })
       return res.json({
         ...conciergeSnapshot(),
