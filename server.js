@@ -339,7 +339,7 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
       const needle = action.category.toLowerCase()
       const categoryTerms = needle === 'real estate' ? ['real estate', 'estate agent', 'estate_agent', 'realtor', 'realty', 'property management', 'property manager'] : [needle]
       const markets = action.anyLocation
-        ? [['Austin','TX'],['Miami','FL'],['Phoenix','AZ'],['Atlanta','GA'],['Dallas','TX'],['Charlotte','NC'],['Denver','CO'],['Orlando','FL']]
+        ? [['Austin','TX'],['Miami','FL'],['Phoenix','AZ']]
         : [[action.city, action.state]]
       const collected = []
       let result = null
