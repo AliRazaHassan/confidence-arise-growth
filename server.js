@@ -472,7 +472,7 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
       const items = listDueFollowUps(new Date(), Math.min(Number(args.limit || 100), 100))
       return res.json({ ...conciergeSnapshot(), answer: items.length ? `${items.length} follow-up(s) are due. I opened them in History.` : 'No follow-ups are due right now.', aiPowered: true, action: { type: 'followups', status: 'completed', count: items.length }, ui: { nav: 'history', tab: 'followups' } })
     } else if (nativeCall.name === 'open_workspace') {
-      const nav = ['find','history','dashboard','settings'].includes(args.workspace) ? args.workspace : 'dashboard'
+      const nav = ['find','history','dashboard','settings','campaigns','inbox'].includes(args.workspace) ? args.workspace : 'dashboard'
       return res.json({ ...conciergeSnapshot(), answer: aiPlan.answer || `Opened ${nav}.`, aiPowered: true, action: { type: 'navigate', status: 'completed' }, ui: { nav, tab: args.tab || null } })
     }
   }
