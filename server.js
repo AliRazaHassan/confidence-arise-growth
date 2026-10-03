@@ -996,4 +996,7 @@ app.listen(PORT, () => {
   console.log(`Email API: ${cfg.emailReady ? 'ready' : 'dry-run'}`)
   console.log(`WhatsApp API: ${cfg.whatsappReady ? 'ready' : 'dry-run'}`)
   console.log(`OpenAI API: ${process.env.OPENAI_API_KEY ? 'key set' : 'KEY MISSING'} · model=${process.env.OPENAI_CONCIERGE_MODEL || 'gpt-6-luna'}`)
+  testConciergeAI()
+    .then((status) => console.log('[openai-health]', status.ok ? `ok · model=${status.model || process.env.OPENAI_CONCIERGE_MODEL}` : `failed · ${status.error || 'unknown error'}`))
+    .catch((err) => console.log('[openai-health] failed · ' + (err?.message || 'unknown error')))
 })
