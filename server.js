@@ -35,6 +35,10 @@ import {
   recordInboundReply,
   listReplies,
   funnelAnalytics,
+  listCampaigns,
+  getCampaign,
+  createCampaign,
+  updateCampaign,
 } from './src/store.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -227,6 +231,90 @@ app.get('/api/crm/replies', requireAuth, (req, res) => {
 
 app.get('/api/analytics/funnel', requireAuth, (_req, res) => {
   res.json(funnelAnalytics())
+})
+
+app.get('/api/campaigns', requireAuth, (_req, res) => {
+  res.json({ items: listCampaigns(100) })
+})
+
+app.post('/api/campaigns', requireAuth, (req, res) => {
+  const { name, category, city, state, leads = [], channels = ['email'] } = req.body || {}
+  if (!Array.isArray(leads) || !leads.length) return res.status(400).json({ error: 'Campaign requires at least one lead.' })
+  const validChannels = channels.filter((x) => ['email','whatsapp'].includes(x))
+  const campaign = createCampaign({
+    name,
+    category,
+    city,
+    state,
+    leads,
+    channels: validChannels.length ? validChannels : ['email'],
+    createdBy: req.user?.email,
+  })
+  res.status(201).json({ campaign })
+})
+
+app.patch('/api/campaigns/:id', requireAuth, (req, res) => {
+  const current = getCampaign(req.params.id)
+  if (!current) return res.status(404).json({ error: 'Campaign not found.' })
+  const allowedStatus = ['draft','active','paused','completed']
+  const patch = {}
+  if (req.body?.name != null) patch.name = String(req.body.name).trim() || current.name
+  if (req.body?.status && allowedStatus.includes(req.body.status)) {
+    patch.status = req.body.status
+    if (req.body.status === 'paused') patch.pausedAt = new Date().toISOString()
+    if (req.body.status === 'active') patch.pausedAt = null
+  }
+  const campaign = updateCampaign(req.params.id, patch)
+  res.json({ campaign })
+})
+
+app.post('/api/campaigns/:id/approve', requireAuth, async (req, res) => {
+  const campaign = getCampaign(req.params.id)
+  if (!campaign) return res.status(404).json({ error: 'Campaign not found.' })
+  if (campaign.status === 'paused') return res.status(409).json({ error: 'Resume the campaign before sending.' })
+  const dryRun = Boolean(req.body?.dryRun)
+  const channels = campaign.channels?.length ? campaign.channels : ['email']
+  const items = []
+  for (const business of (campaign.leads || []).slice(0, 50)) {
+    const results = { email: null, whatsapp: null }
+    const cfg = siteConfig()
+    if (channels.includes('email')) {
+      const subject = defaultEmailSubject(business.name)
+      const text = defaultEmailBody(business, cfg)
+      results.email = business.email
+        ? (dryRun ? { ok: true, dryRun: true, preview: { to: business.email, subject, text } } : await sendEmail({ to: business.email, subject, text }))
+        : { ok: false, error: 'No email' }
+    }
+    if (channels.includes('whatsapp')) {
+      const text = defaultWhatsAppBody(business, cfg)
+      results.whatsapp = business.phone
+        ? (dryRun ? { ok: true, dryRun: true, preview: { to: business.phone, text } } : await sendWhatsApp({ phone: business.phone, text }))
+        : { ok: false, error: 'No phone' }
+    }
+    const status = submissionStatus(results)
+    const submission = recordSubmission({
+      campaignId: campaign.id,
+      businessId: business.id,
+      businessName: business.name,
+      email: business.email || null,
+      phone: business.phone || null,
+      address: business.address || null,
+      channels,
+      dryRun,
+      by: req.user?.email,
+      results,
+      status,
+    })
+    items.push({ business: business.name, status, results, submissionId: submission.id })
+  }
+  const sentCount = items.filter((x) => x.status === 'sent').length
+  const campaignStatus = dryRun ? 'draft' : (sentCount ? 'active' : 'draft')
+  const updated = updateCampaign(campaign.id, {
+    status: campaignStatus,
+    approvedAt: dryRun ? campaign.approvedAt : new Date().toISOString(),
+    lastRunAt: new Date().toISOString(),
+  })
+  res.json({ campaign: updated, dryRun, count: items.length, sentCount, items })
 })
 
 app.get('/api/concierge/snapshot', requireAuth, (_req, res) => {
