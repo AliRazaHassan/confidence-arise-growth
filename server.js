@@ -883,6 +883,53 @@ app.post('/api/outreach/send-batch', requireAuth, async (req, res) => {
   res.json({ count: items.length, items, submissions: saved })
 })
 
+async function processCampaignFollowUps({ dryRun = false } = {}) {
+  const due = listDueFollowUps(new Date(), 100)
+  const items = []
+  for (const lead of due) {
+    if (!lead.campaignId) continue
+    const campaign = getCampaign(lead.campaignId)
+    if (!campaign || campaign.status !== 'active') continue
+    const crm = getLeadCRM(lead.id) || {}
+    if (['won','lost','paused','replied'].includes(crm.status) || crm.followUpComplete) continue
+    const channels = (campaign.channels || ['email']).filter((ch) => (ch === 'email' && lead.email) || (ch === 'whatsapp' && lead.phone))
+    if (!channels.length) continue
+    const message = buildFollowUp(lead, crm, siteConfig())
+    const results = { email: null, whatsapp: null }
+    if (channels.includes('email')) results.email = dryRun ? { ok: true, dryRun: true } : await sendEmail({ to: lead.email, subject: message.subject, text: message.email })
+    if (channels.includes('whatsapp')) results.whatsapp = dryRun ? { ok: true, dryRun: true } : await sendWhatsApp({ phone: lead.phone, text: message.whatsapp })
+    const status = submissionStatus(results)
+    if (!dryRun) {
+      recordSubmission({
+        campaignId: campaign.id,
+        businessId: lead.id,
+        businessName: lead.name,
+        email: lead.email || null,
+        phone: lead.phone || null,
+        address: lead.address || null,
+        channels,
+        dryRun: false,
+        by: 'campaign-auto-followup',
+        results,
+        status,
+        followUpStep: message.step,
+      })
+      if (status === 'sent') {
+        const nextAt = message.final ? null : defaultNextFollowUpAt(new Date(), Number(crm.followUpCount || 0) + 1)
+        recordFollowUp(lead.id, { nextFollowUpAt: nextAt, final: message.final })
+      }
+    }
+    items.push({ leadId: lead.id, campaignId: campaign.id, status, step: message.step })
+  }
+  return items
+}
+
+app.post('/api/campaigns/run-followups', requireAuth, async (req, res) => {
+  const dryRun = req.body?.dryRun !== false
+  const items = await processCampaignFollowUps({ dryRun })
+  res.json({ dryRun, count: items.length, items })
+})
+
 app.use(express.static(path.join(__dirname, 'dist')))
 
 app.use((req, res) => {
@@ -891,6 +938,13 @@ app.use((req, res) => {
 })
 
 const EMAIL_SYNC_MS = Math.max(2, Number(process.env.EMAIL_REPLY_SYNC_MINUTES || 10)) * 60 * 1000
+if (process.env.AUTO_FOLLOWUP_ENABLED === 'true') {
+  const AUTO_FOLLOWUP_MS = Math.max(15, Number(process.env.AUTO_FOLLOWUP_MINUTES || 60)) * 60 * 1000
+  setInterval(() => {
+    processCampaignFollowUps({ dryRun: false }).catch((err) => console.error('Campaign auto-followup failed:', err.message))
+  }, AUTO_FOLLOWUP_MS).unref()
+}
+
 if (process.env.EMAIL_REPLY_SYNC_ENABLED === 'true') {
   setInterval(() => {
     syncEmailReplies({ maxMessages: 50 }).catch((err) => console.error('Email reply sync failed:', err.message))
