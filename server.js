@@ -560,7 +560,7 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
         try {
           const found = await Promise.race([
             searchBusinesses({ state: marketState, city: marketCity, postalCode: '', category: action.category }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Market search timeout')), 20000)),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Market search timeout')), 45000)),
           ])
           return { marketCity, marketState, found }
         } catch (err) {
