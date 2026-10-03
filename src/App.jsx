@@ -5,6 +5,7 @@ import { applyLeadFilters } from './search.js'
 const NAV = [
   { id: 'dashboard', label: 'Command Center' },
   { id: 'find', label: 'Find leads' },
+  { id: 'campaigns', label: 'Campaigns' },
   { id: 'history', label: 'History' },
   { id: 'settings', label: 'Settings' },
 ]
@@ -417,6 +418,86 @@ function DashboardView() {
     {error ? <p className="error">{error}</p> : null}
     <div className="metric-grid">{cards.map(([label,value]) => <div className="metric-card" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
     {stats ? <div className="settings-card funnel-card"><h3>Pipeline</h3><div className="funnel-row"><span>Contacted</span><strong>{stats.contacted}</strong></div><div className="funnel-row"><span>Replied</span><strong>{stats.replied}</strong></div><div className="funnel-row"><span>Qualified</span><strong>{stats.qualified}</strong></div><div className="funnel-row"><span>Proposal</span><strong>{stats.proposals}</strong></div><div className="funnel-row"><span>Won</span><strong>{stats.won}</strong></div></div> : <p className="muted">Loading metrics…</p>}
+  </div>
+}
+
+function CampaignsView() {
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [selected, setSelected] = useState(null)
+  const [running, setRunning] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true); setError('')
+    try {
+      const res = await fetch('/api/campaigns', { credentials: 'include' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not load campaigns')
+      setItems(data.items || [])
+      if (!selected && data.items?.length) setSelected(data.items[0])
+      else if (selected) setSelected(data.items?.find((x) => x.id === selected.id) || selected)
+    } catch (err) { setError(err.message) } finally { setLoading(false) }
+  }, [selected?.id])
+
+  useEffect(() => { load() }, [])
+
+  async function updateStatus(campaign, status) {
+    setError('')
+    try {
+      const res = await fetch('/api/campaigns/' + encodeURIComponent(campaign.id), {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ status }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not update campaign')
+      setSelected(data.campaign)
+      await load()
+    } catch (err) { setError(err.message) }
+  }
+
+  async function runCampaign(campaign, dryRun = true) {
+    setRunning(true); setError('')
+    try {
+      const res = await fetch('/api/campaigns/' + encodeURIComponent(campaign.id) + '/approve', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ dryRun }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Campaign run failed')
+      setSelected(data.campaign)
+      await load()
+      if (dryRun) setError('Preview generated. No messages were sent.')
+    } catch (err) { setError(err.message) } finally { setRunning(false) }
+  }
+
+  return <div className="view">
+    <header className="view-head"><div><h2>Campaigns</h2><p>Build, review, approve, pause and track AI-assisted outreach campaigns.</p></div><button className="btn-ghost" onClick={load}>Refresh</button></header>
+    {error ? <p className={error.startsWith('Preview') ? 'success-line' : 'error'}>{error}</p> : null}
+    {loading ? <p className="muted">Loading campaigns…</p> : null}
+    <div className="table-wrap">
+      <table>
+        <thead><tr><th>Campaign</th><th>Status</th><th>Leads</th><th>Sent</th><th>Replies</th><th>Interested</th><th>Action</th></tr></thead>
+        <tbody>{items.length ? items.map((c) => <tr key={c.id}>
+          <td><strong>{c.name}</strong><div className="cell-sub">{c.category || 'business'} {c.city ? '· ' + c.city + ', ' + c.state : ''}</div></td>
+          <td><span className="tone warn">{c.status}</span></td>
+          <td>{c.metrics?.leads || 0}</td><td>{c.metrics?.sent || 0}</td><td>{c.metrics?.replies || 0}</td><td>{c.metrics?.interested || 0}</td>
+          <td><button className="btn-ghost tiny" onClick={() => setSelected(c)}>Open</button></td>
+        </tr>) : <tr><td colSpan={7} className="empty-row">No campaigns yet. Ask AI to create one from your recent leads.</td></tr>}</tbody>
+      </table>
+    </div>
+    {selected ? <aside className="drawer">
+      <div className="drawer-head"><div><h3>{selected.name}</h3><div className="cell-sub">{selected.leads?.length || 0} leads · {(selected.channels || []).join(', ')}</div></div><button className="btn-ghost tiny" onClick={() => setSelected(null)}>Close</button></div>
+      <p><strong>Status:</strong> {selected.status}</p>
+      <div className="head-actions">
+        <button className="btn-ghost" disabled={running} onClick={() => runCampaign(selected, true)}>Preview run</button>
+        {selected.status === 'paused'
+          ? <button className="btn-primary" onClick={() => updateStatus(selected, 'active')}>Resume</button>
+          : <button className="btn-ghost" onClick={() => updateStatus(selected, 'paused')}>Pause</button>}
+        <button className="btn-primary" disabled={running || selected.status === 'paused'} onClick={() => runCampaign(selected, false)}>Approve & send</button>
+      </div>
+      <p className="muted">Approval sends only to leads with a matching configured contact channel. Successful sends enter the CRM and follow-up schedule automatically.</p>
+    </aside> : null}
   </div>
 }
 
@@ -1096,7 +1177,7 @@ function Concierge() {
       {tasks.length ? <div className="concierge-tasks"><strong>Priority queue</strong>{tasks.slice(0,3).map((t,i) => <div className="concierge-task" key={t.leadId || i}><span>{t.priority}</span><div><b>{t.title}</b><small>{t.detail}</small></div></div>)}</div> : null}
       <div className="concierge-chat">{chat.map((m,i) => <div key={i} className={'concierge-msg ' + m.role}>{m.text}</div>)}{busy ? <div className="concierge-msg assistant">Working…</div> : null}</div>
       <form className="concierge-input" onSubmit={(e) => { e.preventDefault(); ask() }}><input value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Ask me to find leads, open a workspace, or review your pipeline…" /><button className="btn-primary tiny" disabled={busy}>Ask</button></form>
-      <div className="concierge-quick concierge-quick-bottom">{['Find 20 real estate leads', 'Find 20 dentists in Austin, TX', 'Prepare outreach for top 5 leads', 'Show recent leads', 'Follow-ups due?', 'Open Settings'].map((q) => <button type="button" key={q} onClick={() => ask(q)} disabled={busy}>{q}</button>)}</div>
+      <div className="concierge-quick concierge-quick-bottom">{['Find 20 real estate leads', 'Find 20 dentists in Austin, TX', 'Prepare outreach for top 5 leads', 'Create a campaign from top 20 leads', 'Show recent leads', 'Follow-ups due?', 'Open Settings'].map((q) => <button type="button" key={q} onClick={() => ask(q)} disabled={busy}>{q}</button>)}</div>
     </aside> : null}
   </>
 }
@@ -1141,6 +1222,8 @@ export default function App() {
         setNav('dashboard')
       } else if (ui.nav === 'settings') {
         setNav('settings')
+      } else if (ui.nav === 'campaigns') {
+        setNav('campaigns')
       }
     }
     window.addEventListener('concierge-ui', handler)
@@ -1205,6 +1288,8 @@ export default function App() {
             onSent={() => setHistoryKey((k) => k + 1)}
             agentPayload={agentFindPayload}
           />
+        ) : nav === 'campaigns' ? (
+          <CampaignsView />
         ) : nav === 'settings' ? (
           <SettingsView config={config} onSaved={() => setHistoryKey((k) => k + 1)} />
         ) : (
