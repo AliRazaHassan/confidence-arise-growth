@@ -337,7 +337,14 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
     try {
       conciergePendingActions.delete(sessionKey)
       const needle = action.category.toLowerCase()
-      const categoryTerms = needle === 'real estate' ? ['real estate', 'estate agent', 'estate_agent', 'realtor', 'realty', 'property management', 'property manager'] : [needle]
+      const categoryTerms =
+        needle === 'real estate'
+          ? ['real estate', 'estate agent', 'estate_agent', 'realtor', 'realty', 'property management', 'property manager']
+          : /dentist|dental/.test(needle)
+            ? ['dentist', 'dental']
+            : /restaurant/.test(needle)
+              ? ['restaurant']
+              : [needle]
       const markets = action.anyLocation
         ? [['Austin','TX'],['Miami','FL'],['Phoenix','AZ']]
         : [[action.city, action.state]]
