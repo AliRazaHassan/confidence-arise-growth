@@ -429,6 +429,43 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
       if (args.action === 'resume') updateCampaign(target.id, { status: 'active', pausedAt: null })
       const state = args.action === 'pause' ? 'paused' : args.action === 'resume' ? 'resumed' : 'opened'
       return res.json({ ...conciergeSnapshot(), answer: `${target.name} ${state}.`, aiPowered: true, action: { type: 'campaign_manage', status: 'completed', campaignId: target.id }, ui: { nav: 'campaigns', campaignId: target.id } })
+    } else if (nativeCall.name === 'campaign_insights') {
+      const campaigns = listCampaigns(20)
+      const summary = campaigns.slice(0, 8).map((x) => ({
+        id: x.id, name: x.name, status: x.status, metrics: x.metrics,
+      }))
+      const lines = summary.map((x) => `${x.name}: ${x.metrics.sent} sent, ${x.metrics.replies} replies, ${x.metrics.interested} interested`)
+      return res.json({
+        ...conciergeSnapshot(),
+        answer: lines.length ? `Campaign performance:\n${lines.join('\n')}` : 'There are no campaigns yet.',
+        aiPowered: true,
+        action: { type: 'campaign_insights', status: 'completed', campaigns: summary },
+        ui: { nav: 'campaigns' },
+      })
+    } else if (nativeCall.name === 'query_crm') {
+      let items = listLeads(500)
+      if (args.status) items = items.filter((x) => (x.crm?.status || 'new') === args.status)
+      if (args.no_reply) items = items.filter((x) => !x.crm?.lastReplyAt)
+      items = items.sort((a,b) => Number(b.opportunityScore || b.intelligence?.opportunityScore || 0) - Number(a.opportunityScore || a.intelligence?.opportunityScore || 0)).slice(0, Math.min(Number(args.limit || 20), 50))
+      if (items.length) conciergeRecentLeads.set(sessionKey, items)
+      return res.json({
+        ...conciergeSnapshot(),
+        answer: items.length ? `I found ${items.length} matching CRM lead${items.length === 1 ? '' : 's'} and opened them in Find Leads.` : 'No CRM leads match that filter.',
+        aiPowered: true,
+        action: { type: 'crm_query', status: 'completed', leadCount: items.length, leads: items },
+        ui: items.length ? { nav: 'find', payload: { leads: items, placeLabel: 'CRM filtered leads' } } : null,
+      })
+    } else if (nativeCall.name === 'update_recent_leads_stage') {
+      const source = (conciergeRecentLeads.get(sessionKey) || []).slice(0, Math.min(Number(args.limit || 20), 50))
+      if (!source.length) return res.json({ ...conciergeSnapshot(), answer: 'There are no recent leads selected. Find or open leads first.', aiPowered: true })
+      const updated = source.map((business) => updateLeadCRM({ id: business.id, business, status: args.status }))
+      return res.json({
+        ...conciergeSnapshot(),
+        answer: `Moved ${updated.length} recent lead${updated.length === 1 ? '' : 's'} to ${args.status}.`,
+        aiPowered: true,
+        action: { type: 'crm_update', status: 'completed', count: updated.length, crmStatus: args.status },
+        ui: { nav: 'find', payload: { leads: source, placeLabel: `Recent leads · ${args.status}` } },
+      })
     } else if (nativeCall.name === 'get_pipeline') {
       return res.json({ ...conciergeSnapshot(), answer: aiPlan.answer || 'I opened the current pipeline overview.', aiPowered: true, action: { type: 'pipeline', status: 'completed' }, ui: { nav: 'dashboard' } })
     } else if (nativeCall.name === 'get_due_followups') {
