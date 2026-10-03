@@ -406,6 +406,38 @@ async function fetchOverpass(query, timeoutMs = 20000) {
   throw lastError || new Error('Lead lookup failed.')
 }
 
+async function fetchOverpassFast(query, timeoutMs = 12000) {
+  const jobs = OVERPASS_ENDPOINTS.map(async (endpoint) => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+          'User-Agent': UA,
+          Accept: 'application/json',
+        },
+        body: `data=${encodeURIComponent(query)}`,
+        signal: controller.signal,
+      })
+      if (!res.ok) throw new Error(`Overpass ${res.status}`)
+      const text = await res.text()
+      if (text.trimStart().startsWith('<')) throw new Error('Overpass error page')
+      const data = JSON.parse(text)
+      if (!Array.isArray(data.elements) || !data.elements.length) throw new Error('Empty Overpass')
+      return data
+    } finally {
+      clearTimeout(timer)
+    }
+  })
+  try {
+    return await Promise.any(jobs)
+  } catch {
+    throw new Error('Targeted lead lookup failed.')
+  }
+}
+
 function dedupe(list) {
   const seen = new Set()
   const out = []
@@ -496,12 +528,14 @@ export async function searchBusinesses({ state, city, postalCode, category = '' 
     postalCode: postalCode?.trim() || '',
   })
 
-  const places = category ? gridPlaces(place).slice(0, 2) : gridPlaces(place)
+  const places = category ? [place] : gridPlaces(place)
 
   const osmPromise = Promise.all(
     places.map(async (gridPlace) => {
       try {
-        const data = await fetchOverpass(buildNodeLeadQuery(gridPlace, category), category ? 12000 : 16000)
+        const data = category
+          ? await fetchOverpassFast(buildNodeLeadQuery(gridPlace, category), 12000)
+          : await fetchOverpass(buildNodeLeadQuery(gridPlace, category), 16000)
         return data.elements || []
       } catch {
         return []
