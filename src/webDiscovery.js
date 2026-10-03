@@ -161,15 +161,22 @@ function gridPoints(place) {
   return offsets.map(([y, x]) => ({ lat: lat + y * latStep, lon: lon + x * lonStep }))
 }
 
-export async function discoverWebBusinesses({ place, city, state, categories = Object.keys(CATEGORY_QUERIES) }) {
+export async function discoverWebBusinesses({ place, city, state, categories = Object.keys(CATEGORY_QUERIES), searchTerms = [] }) {
   const cityText = [city, state, 'USA'].filter(Boolean).join(', ')
   const points = gridPoints(place)
   const queries = []
   const selected = categories.length ? categories : ['other']
+  const targetedTerms = [...new Set((searchTerms || []).map((x) => String(x || '').trim()).filter(Boolean))]
 
-  for (const category of selected) {
-    for (const term of CATEGORY_QUERIES[category] || CATEGORY_QUERIES.other) {
-      queries.push({ query: `${term} in ${cityText}`, category })
+  if (targetedTerms.length) {
+    for (const term of targetedTerms) {
+      queries.push({ query: `${term} in ${cityText}`, category: term })
+    }
+  } else {
+    for (const category of selected) {
+      for (const term of CATEGORY_QUERIES[category] || CATEGORY_QUERIES.other) {
+        queries.push({ query: `${term} in ${cityText}`, category })
+      }
     }
   }
 
