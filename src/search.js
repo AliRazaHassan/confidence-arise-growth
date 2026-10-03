@@ -176,7 +176,7 @@ function elementToBusiness(el) {
     tags.website || tags['contact:website'] || tags.url || tags['contact:facebook'],
   )
 
-  if (!phone && !email) return null
+  if (!phone && !email && !website) return null
 
   const business = {
     id: `${el.type}/${el.id}`,
@@ -301,10 +301,13 @@ function targetedOsmClauses(place, category) {
   const value = String(category || '').trim().toLowerCase()
   if (!value || value === 'business') return ''
   const contactVariants = (selector) => [
-    `node(around:${r},${lat},${lon})[name]${selector}[phone];`,
-    `node(around:${r},${lat},${lon})[name]${selector}["contact:phone"];`,
-    `node(around:${r},${lat},${lon})[name]${selector}[email];`,
-    `node(around:${r},${lat},${lon})[name]${selector}["contact:email"];`,
+    `nwr(around:${r},${lat},${lon})[name]${selector};`,
+    `nwr(around:${r},${lat},${lon})[name]${selector}[phone];`,
+    `nwr(around:${r},${lat},${lon})[name]${selector}["contact:phone"];`,
+    `nwr(around:${r},${lat},${lon})[name]${selector}[email];`,
+    `nwr(around:${r},${lat},${lon})[name]${selector}["contact:email"];`,
+    `nwr(around:${r},${lat},${lon})[name]${selector}[website];`,
+    `nwr(around:${r},${lat},${lon})[name]${selector}["contact:website"];`,
   ].join('\n  ')
 
   if (/real\s*estate|realtor|realty|property/.test(value)) {
@@ -331,7 +334,7 @@ function buildNodeLeadQuery(place, category = '') {
 (
   ${targeted}
 );
-out body ${Math.min(MAX_RESULTS, 300)};
+out center body ${Math.min(MAX_RESULTS, 300)};
 `.trim()
   }
   return `
