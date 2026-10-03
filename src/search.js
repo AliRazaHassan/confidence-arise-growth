@@ -494,8 +494,8 @@ export async function searchBusinesses({ state, city, postalCode, category = '' 
   })
 
   const places = category ? gridPlaces(place).slice(0, 2) : gridPlaces(place)
-  let elements = []
-  const osmResults = await Promise.all(
+
+  const osmPromise = Promise.all(
     places.map(async (gridPlace) => {
       try {
         const data = await fetchOverpass(buildNodeLeadQuery(gridPlace, category), category ? 12000 : 16000)
@@ -505,19 +505,16 @@ export async function searchBusinesses({ state, city, postalCode, category = '' 
       }
     }),
   )
-  elements = osmResults.flat()
 
-  let webBusinesses = []
-  try {
-    webBusinesses = await discoverWebBusinesses({
-      place,
-      city: city?.trim() || place.city,
-      state: state?.trim() || place.state,
-      searchTerms: categorySearchTerms(category),
-    })
-  } catch {
-    webBusinesses = []
-  }
+  const webPromise = discoverWebBusinesses({
+    place,
+    city: city?.trim() || place.city,
+    state: state?.trim() || place.state,
+    searchTerms: categorySearchTerms(category),
+  }).catch(() => [])
+
+  const [osmResults, webBusinesses] = await Promise.all([osmPromise, webPromise])
+  const elements = osmResults.flat()
 
   const osmBusinesses = elements.map(elementToBusiness).filter(Boolean)
   const businesses = dedupe([
