@@ -732,6 +732,7 @@ app.get('/api/businesses', requireAuth, async (req, res) => {
   const state = String(req.query.state || '').trim().toUpperCase()
   const city = String(req.query.city || '').trim()
   const postalCode = String(req.query.postalCode || '').trim()
+  const category = String(req.query.category || '').trim()
   if (postalCode && !/^\d{5}(?:-\d{4})?$/.test(postalCode)) {
     return res.status(400).json({ error: 'Enter a valid 5-digit US ZIP code (optionally ZIP+4).' })
   }
@@ -743,7 +744,7 @@ app.get('/api/businesses', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'Select a city in that state (or enter a ZIP).' })
   }
 
-  const cacheKey = [CACHE_VERSION, state, city.toLowerCase(), postalCode].join('|')
+  const cacheKey = [CACHE_VERSION, state, city.toLowerCase(), postalCode, category.toLowerCase()].join('|')
   const cached = recent.get(cacheKey)
   if (cached && Date.now() - cached.at < CACHE_MS) {
     return res.json(cached.payload)
@@ -754,7 +755,7 @@ app.get('/api/businesses', requireAuth, async (req, res) => {
   }, 55_000)
 
   try {
-    const result = await searchBusinesses({ state, city, postalCode })
+    const result = await searchBusinesses({ state, city, postalCode, category })
     const searchMeta = recordSearch({
       state,
       city,
