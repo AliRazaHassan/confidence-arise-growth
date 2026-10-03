@@ -995,4 +995,5 @@ app.listen(PORT, () => {
   console.log(`Auth: ${cfg.authConfigured ? 'password set' : 'SET AUTH_PASSWORD'}`)
   console.log(`Email API: ${cfg.emailReady ? 'ready' : 'dry-run'}`)
   console.log(`WhatsApp API: ${cfg.whatsappReady ? 'ready' : 'dry-run'}`)
+  console.log(`OpenAI API: ${process.env.OPENAI_API_KEY ? 'key set' : 'KEY MISSING'} · model=${process.env.OPENAI_CONCIERGE_MODEL || 'gpt-6-luna'}`)
 })
