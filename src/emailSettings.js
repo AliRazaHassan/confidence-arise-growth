@@ -38,14 +38,29 @@ function decrypt(value) {
   return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8')
 }
 
+function envSettings() {
+  const email = String(process.env.SMTP_EMAIL || process.env.FROM_EMAIL || '').trim()
+  const password = String(process.env.SMTP_PASSWORD || '').trim()
+  const host = String(process.env.SMTP_HOST || '').trim()
+  if (!email || !password || !host) return null
+  return {
+    provider: process.env.SMTP_PROVIDER || 'custom',
+    email,
+    fromName: process.env.SMTP_FROM_NAME || process.env.FROM_NAME || 'Confidence Arise',
+    host,
+    port: Number(process.env.SMTP_PORT || 587),
+    secure: String(process.env.SMTP_SECURE || '').toLowerCase() === 'true',
+    passwordEnv: password,
+    updatedAt: null,
+  }
+}
+
 function read() {
   try {
     ensureDir()
-    if (!fs.existsSync(FILE)) return null
-    return JSON.parse(fs.readFileSync(FILE, 'utf8'))
-  } catch {
-    return null
-  }
+    if (fs.existsSync(FILE)) return JSON.parse(fs.readFileSync(FILE, 'utf8'))
+  } catch {}
+  return envSettings()
 }
 
 export function providerDefaults(provider) {
@@ -62,10 +77,11 @@ export function getEmailSettings({ includeSecret = false } = {}) {
     host: row.host,
     port: row.port,
     secure: row.secure,
-    configured: Boolean(row.passwordEncrypted),
+    configured: Boolean(row.passwordEncrypted || row.passwordEnv),
     updatedAt: row.updatedAt,
   }
   if (includeSecret && row.passwordEncrypted) result.password = decrypt(row.passwordEncrypted)
+  else if (includeSecret && row.passwordEnv) result.password = row.passwordEnv
   return result
 }
 
