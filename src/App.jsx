@@ -6,6 +6,7 @@ const NAV = [
   { id: 'dashboard', label: 'Command Center' },
   { id: 'find', label: 'Find leads' },
   { id: 'campaigns', label: 'Campaigns' },
+  { id: 'inbox', label: 'AI Inbox' },
   { id: 'history', label: 'History' },
   { id: 'settings', label: 'Settings' },
 ]
@@ -456,6 +457,19 @@ function CampaignsView() {
     } catch (err) { setError(err.message) }
   }
 
+  async function previewFollowUps() {
+    setRunning(true); setError('')
+    try {
+      const res = await fetch('/api/campaigns/run-followups', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ dryRun: true }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not preview follow-ups')
+      setError(`Follow-up preview: ${data.count || 0} due campaign follow-up(s). Nothing was sent.`)
+    } catch (err) { setError(err.message) } finally { setRunning(false) }
+  }
+
   async function runCampaign(campaign, dryRun = true) {
     setRunning(true); setError('')
     try {
@@ -472,7 +486,7 @@ function CampaignsView() {
   }
 
   return <div className="view">
-    <header className="view-head"><div><h2>Campaigns</h2><p>Build, review, approve, pause and track AI-assisted outreach campaigns.</p></div><button className="btn-ghost" onClick={load}>Refresh</button></header>
+    <header className="view-head"><div><h2>Campaigns</h2><p>Build, review, approve, pause and track AI-assisted outreach campaigns.</p></div><div className="head-actions"><button className="btn-ghost" disabled={running} onClick={previewFollowUps}>Preview due follow-ups</button><button className="btn-ghost" onClick={load}>Refresh</button></div></header>
     {error ? <p className={error.startsWith('Preview') ? 'success-line' : 'error'}>{error}</p> : null}
     {loading ? <p className="muted">Loading campaigns…</p> : null}
     <div className="table-wrap">
@@ -1177,7 +1191,7 @@ function Concierge() {
       {tasks.length ? <div className="concierge-tasks"><strong>Priority queue</strong>{tasks.slice(0,3).map((t,i) => <div className="concierge-task" key={t.leadId || i}><span>{t.priority}</span><div><b>{t.title}</b><small>{t.detail}</small></div></div>)}</div> : null}
       <div className="concierge-chat">{chat.map((m,i) => <div key={i} className={'concierge-msg ' + m.role}>{m.text}</div>)}{busy ? <div className="concierge-msg assistant">Working…</div> : null}</div>
       <form className="concierge-input" onSubmit={(e) => { e.preventDefault(); ask() }}><input value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Ask me to find leads, open a workspace, or review your pipeline…" /><button className="btn-primary tiny" disabled={busy}>Ask</button></form>
-      <div className="concierge-quick concierge-quick-bottom">{['Find 20 real estate leads', 'Find 20 dentists in Austin, TX', 'Prepare outreach for top 5 leads', 'Create a campaign from top 20 leads', 'Show recent leads', 'Follow-ups due?', 'Open Settings'].map((q) => <button type="button" key={q} onClick={() => ask(q)} disabled={busy}>{q}</button>)}</div>
+      <div className="concierge-quick concierge-quick-bottom">{['Find 20 real estate leads', 'Find 20 dentists in Austin, TX', 'Prepare outreach for top 5 leads', 'Create a campaign from top 20 leads', 'Open AI Inbox', 'Show recent leads', 'Follow-ups due?', 'Open Settings'].map((q) => <button type="button" key={q} onClick={() => ask(q)} disabled={busy}>{q}</button>)}</div>
     </aside> : null}
   </>
 }
@@ -1224,6 +1238,10 @@ export default function App() {
         setNav('settings')
       } else if (ui.nav === 'campaigns') {
         setNav('campaigns')
+      } else if (ui.nav === 'inbox') {
+        setAgentHistoryTab('replies')
+        setHistoryKey((k) => k + 1)
+        setNav('inbox')
       }
     }
     window.addEventListener('concierge-ui', handler)
@@ -1290,6 +1308,8 @@ export default function App() {
           />
         ) : nav === 'campaigns' ? (
           <CampaignsView />
+        ) : nav === 'inbox' ? (
+          <HistoryView key={'inbox-' + historyKey} initialTab="replies" />
         ) : nav === 'settings' ? (
           <SettingsView config={config} onSaved={() => setHistoryKey((k) => k + 1)} />
         ) : (
