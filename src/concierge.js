@@ -68,7 +68,7 @@ export async function answerConciergeAI(message, history = [], continuation = nu
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: process.env.OPENAI_CONCIERGE_MODEL || 'gpt-5.6-luna',
+        model: process.env.OPENAI_CONCIERGE_MODEL || 'gpt-6-luna',
         ...(continuation?.responseId ? { previous_response_id: continuation.responseId, input: continuation.outputs || [] } : { input: [
           { role: 'system', content: [{ type: 'input_text', text: system }] },
           { role: 'user', content: [{ type: 'input_text', text: `Conversation history:\n${JSON.stringify(history.slice(-16))}\n\nWorkspace data:\n${JSON.stringify(compactContext(snapshot))}\n\nUser request: ${String(message || '')}` }] },
@@ -108,11 +108,11 @@ export async function testConciergeAI() {
     const res = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: process.env.OPENAI_CONCIERGE_MODEL || 'gpt-5.6-luna', input: 'Reply with OK.', max_output_tokens: 10 }),
+      body: JSON.stringify({ model: process.env.OPENAI_CONCIERGE_MODEL || 'gpt-6-luna', input: 'Reply with OK.', max_output_tokens: 10 }),
     })
     const data = await res.json()
     if (!res.ok) return { ok: false, configured: true, error: data?.error?.message || `OpenAI API ${res.status}` }
-    return { ok: true, configured: true, model: process.env.OPENAI_CONCIERGE_MODEL || 'gpt-5.6-luna' }
+    return { ok: true, configured: true, model: process.env.OPENAI_CONCIERGE_MODEL || 'gpt-6-luna' }
   } catch (err) {
     return { ok: false, configured: true, error: err.message }
   }
@@ -165,7 +165,7 @@ export async function contextualConciergeAI({ question, context }) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: process.env.OPENAI_CONCIERGE_MODEL || 'gpt-5.6-luna',
+        model: process.env.OPENAI_CONCIERGE_MODEL || 'gpt-6-luna',
         input: `You are a concise sales growth copilot. Answer only from the selected CRM/lead context. If evidence is missing, say so.\nContext: ${JSON.stringify(safe)}\nQuestion: ${String(question || 'What should I know about this?')}`,
         max_output_tokens: 500,
       }),
