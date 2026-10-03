@@ -50,7 +50,7 @@ services:
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_CONCIERGE_MODEL
-        value: gpt-5.6-luna
+        value: gpt-6-luna
       - key: GOOGLE_API_KEY
         sync: false
       - key: GOOGLE_CSE_ID
