@@ -21,6 +21,20 @@ services:
         sync: false
       - key: RESEND_API_KEY
         sync: false
+      - key: SMTP_PROVIDER
+        value: custom
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_EMAIL
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM_NAME
+        value: Confidence Arise
       - key: WHATSAPP_TOKEN
         sync: false
       - key: WHATSAPP_PHONE_NUMBER_ID
