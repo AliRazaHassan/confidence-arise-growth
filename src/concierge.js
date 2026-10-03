@@ -108,7 +108,7 @@ export async function testConciergeAI() {
     const res = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: process.env.OPENAI_CONCIERGE_MODEL || 'gpt-6-luna', input: 'Reply with OK.', max_output_tokens: 10 }),
+      body: JSON.stringify({ model: process.env.OPENAI_CONCIERGE_MODEL || 'gpt-6-luna', input: 'Reply with OK.', max_output_tokens: 20 }),
     })
     const data = await res.json()
     if (!res.ok) return { ok: false, configured: true, error: data?.error?.message || `OpenAI API ${res.status}` }
