@@ -47,3 +47,7 @@ services:
         value: "false"
       - key: EMAIL_REPLY_SYNC_MINUTES
         value: "10"
+      - key: AUTO_FOLLOWUP_ENABLED
+        value: "true"
+      - key: AUTO_FOLLOWUP_MINUTES
+        value: "60"
