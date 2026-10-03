@@ -396,6 +396,39 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
         action: { type: 'outreach_preview', status: 'completed', count: drafts.length, drafts },
         ui: drafts.length ? { nav: 'find', payload: { leads: candidates, placeLabel: 'Outreach queue', outreachDrafts: drafts } } : null,
       })
+    } else if (nativeCall.name === 'create_campaign') {
+      const source = conciergeRecentLeads.get(sessionKey) || listLeads(200)
+      const limit = Math.min(Math.max(Number(args.limit || 20), 1), 50)
+      const leads = source.slice(0, limit)
+      if (!leads.length) {
+        return res.json({ ...conciergeSnapshot(), answer: 'There are no recent leads to build a campaign from. Find fresh leads first.', aiPowered: true, action: { type: 'campaign_create', status: 'needs_input' } })
+      }
+      const channel = ['email','whatsapp','both'].includes(args.channel) ? args.channel : 'email'
+      const channels = channel === 'both' ? ['email','whatsapp'] : [channel]
+      const campaign = createCampaign({
+        name: args.name || `${leads[0]?.market || 'Lead'} campaign`,
+        category: 'recent leads',
+        city: '',
+        state: '',
+        leads,
+        channels,
+        createdBy: req.user?.email,
+      })
+      return res.json({
+        ...conciergeSnapshot(),
+        answer: `Created draft campaign "${campaign.name}" with ${leads.length} leads. I opened Campaigns for review and approval.`,
+        aiPowered: true,
+        action: { type: 'campaign_create', status: 'completed', campaignId: campaign.id, leadCount: leads.length },
+        ui: { nav: 'campaigns', campaignId: campaign.id },
+      })
+    } else if (nativeCall.name === 'manage_campaign') {
+      const campaigns = listCampaigns(100)
+      const target = args.campaign_id ? campaigns.find((x) => x.id === args.campaign_id) : campaigns[0]
+      if (!target) return res.json({ ...conciergeSnapshot(), answer: 'There are no campaigns yet.', aiPowered: true, ui: { nav: 'campaigns' } })
+      if (args.action === 'pause') updateCampaign(target.id, { status: 'paused', pausedAt: new Date().toISOString() })
+      if (args.action === 'resume') updateCampaign(target.id, { status: 'active', pausedAt: null })
+      const state = args.action === 'pause' ? 'paused' : args.action === 'resume' ? 'resumed' : 'opened'
+      return res.json({ ...conciergeSnapshot(), answer: `${target.name} ${state}.`, aiPowered: true, action: { type: 'campaign_manage', status: 'completed', campaignId: target.id }, ui: { nav: 'campaigns', campaignId: target.id } })
     } else if (nativeCall.name === 'get_pipeline') {
       return res.json({ ...conciergeSnapshot(), answer: aiPlan.answer || 'I opened the current pipeline overview.', aiPowered: true, action: { type: 'pipeline', status: 'completed' }, ui: { nav: 'dashboard' } })
     } else if (nativeCall.name === 'get_due_followups') {
