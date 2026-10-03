@@ -1093,10 +1093,10 @@ function Concierge() {
     {open ? <aside className="concierge-panel">
       <div className="concierge-head"><div className="concierge-title"><span className="robot-avatar" aria-hidden="true">🤖</span><div><strong>AI Concierge</strong><span>Growth copilot · <i className={aiStatus?.ok ? 'ai-live' : 'ai-fallback'}>{aiStatus?.ok ? 'AI live' : 'fallback'}</i></span></div></div><button className="btn-ghost tiny" onClick={() => setOpen(false)}>Close</button></div>
       {busy || progress ? <div className="agent-progress"><div style={{width: progress + '%'}} /><span>{progress}% · {progress < 35 ? 'Understanding request' : progress < 75 ? 'Working through data' : 'Preparing results'}</span></div> : null}
-      <div className="concierge-quick">{['What should I do today?', 'Show hot leads', 'Follow-ups due?', 'Pipeline status', 'Sync email replies'].map((q) => <button type="button" key={q} onClick={() => ask(q)}>{q}</button>)}</div>
       {tasks.length ? <div className="concierge-tasks"><strong>Priority queue</strong>{tasks.slice(0,3).map((t,i) => <div className="concierge-task" key={t.leadId || i}><span>{t.priority}</span><div><b>{t.title}</b><small>{t.detail}</small></div></div>)}</div> : null}
       <div className="concierge-chat">{chat.map((m,i) => <div key={i} className={'concierge-msg ' + m.role}>{m.text}</div>)}{busy ? <div className="concierge-msg assistant">Working…</div> : null}</div>
-      <form className="concierge-input" onSubmit={(e) => { e.preventDefault(); ask() }}><input value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Try: Find 20 dentists leads in Austin, TX" /><button className="btn-primary tiny" disabled={busy}>Ask</button></form>
+      <form className="concierge-input" onSubmit={(e) => { e.preventDefault(); ask() }}><input value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Ask me to find leads, open a workspace, or review your pipeline…" /><button className="btn-primary tiny" disabled={busy}>Ask</button></form>
+      <div className="concierge-quick concierge-quick-bottom">{['Find 20 real estate leads', 'Find 20 dentists in Austin, TX', 'Show recent leads', 'Follow-ups due?', 'Open Settings'].map((q) => <button type="button" key={q} onClick={() => ask(q)} disabled={busy}>{q}</button>)}</div>
     </aside> : null}
   </>
 }
@@ -1139,6 +1139,8 @@ export default function App() {
         setNav('history')
       } else if (ui.nav === 'dashboard') {
         setNav('dashboard')
+      } else if (ui.nav === 'settings') {
+        setNav('settings')
       }
     }
     window.addEventListener('concierge-ui', handler)
