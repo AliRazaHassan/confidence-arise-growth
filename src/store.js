@@ -10,6 +10,7 @@ const SUBMISSIONS_FILE = path.join(DATA_DIR, 'submissions.json')
 const LEADS_FILE = path.join(DATA_DIR, 'leads.json')
 const CRM_FILE = path.join(DATA_DIR, 'crm.json')
 const REPLIES_FILE = path.join(DATA_DIR, 'replies.json')
+const CAMPAIGNS_FILE = path.join(DATA_DIR, 'campaigns.json')
 
 const MAX_SEARCHES = 100
 const MAX_SUBMISSIONS = 500
@@ -317,4 +318,62 @@ export function funnelAnalytics() {
     replyRate: contacted ? Math.round((replied / contacted) * 1000) / 10 : 0,
     winRate: contacted ? Math.round((count('won') / contacted) * 1000) / 10 : 0,
   }
+}
+
+
+export function listCampaigns(limit = 100) {
+  const rows = readJson(CAMPAIGNS_FILE, [])
+  const submissions = readJson(SUBMISSIONS_FILE, [])
+  const replies = readJson(REPLIES_FILE, [])
+  return rows.map((campaign) => {
+    const sentRows = submissions.filter((x) => x.campaignId === campaign.id && x.status === 'sent')
+    const leadIds = new Set(campaign.leads?.map((x) => x.id) || [])
+    const campaignReplies = replies.filter((x) => leadIds.has(x.businessId))
+    const interested = campaignReplies.filter((x) => ['interested','meeting_request','question'].includes(x.classification)).length
+    return {
+      ...campaign,
+      metrics: {
+        leads: campaign.leads?.length || 0,
+        sent: sentRows.length,
+        replies: campaignReplies.length,
+        interested,
+      },
+    }
+  }).sort((a,b) => String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt))).slice(0, limit)
+}
+
+export function getCampaign(id) {
+  return readJson(CAMPAIGNS_FILE, []).find((x) => x.id === id) || null
+}
+
+export function createCampaign({ name, category, city, state, leads = [], channels = ['email'], createdBy = null }) {
+  const rows = readJson(CAMPAIGNS_FILE, [])
+  const now = new Date().toISOString()
+  const campaign = {
+    id: id(),
+    name: name || `${category || 'Lead'} campaign`,
+    category: category || 'business',
+    city: city || '',
+    state: state || '',
+    channels,
+    status: 'draft',
+    approvedAt: null,
+    pausedAt: null,
+    createdAt: now,
+    updatedAt: now,
+    createdBy,
+    leads: leads.slice(0, 100),
+  }
+  rows.unshift(campaign)
+  writeJson(CAMPAIGNS_FILE, rows.slice(0, 200))
+  return campaign
+}
+
+export function updateCampaign(idValue, patch = {}) {
+  const rows = readJson(CAMPAIGNS_FILE, [])
+  const index = rows.findIndex((x) => x.id === idValue)
+  if (index < 0) return null
+  rows[index] = { ...rows[index], ...patch, id: rows[index].id, updatedAt: new Date().toISOString() }
+  writeJson(CAMPAIGNS_FILE, rows)
+  return rows[index]
 }
