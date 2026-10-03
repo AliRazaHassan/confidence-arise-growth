@@ -260,6 +260,23 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
         needsLocation: !args.anywhere_us && (!args.city || !args.state),
         nativeTool: true,
       }
+    } else if (nativeCall.name === 'get_recent_leads') {
+      const recentItems = conciergeRecentLeads.get(sessionKey) || listLeads(200)
+      const items = recentItems
+        .filter((b) => !args.require_email || b.email)
+        .filter((b) => !args.require_phone || b.phone)
+        .sort((a,b) => Number(b.opportunityScore || b.intelligence?.opportunityScore || 0) - Number(a.opportunityScore || a.intelligence?.opportunityScore || 0))
+        .slice(0, Math.min(Number(args.limit || 20), 50))
+      if (items.length) conciergeRecentLeads.set(sessionKey, items)
+      return res.json({
+        ...conciergeSnapshot(),
+        answer: items.length
+          ? `I opened ${items.length} recent leads in Find Leads, ranked by opportunity score.`
+          : 'There are no recent leads yet. Ask me to find a fresh batch.',
+        aiPowered: true,
+        action: { type: 'recent_leads', status: 'completed', leadCount: items.length, leads: items },
+        ui: items.length ? { nav: 'find', payload: { leads: items, placeLabel: 'Recent leads' } } : null,
+      })
     } else if (nativeCall.name === 'get_pipeline') {
       return res.json({ ...conciergeSnapshot(), answer: aiPlan.answer || 'I opened the current pipeline overview.', aiPowered: true, action: { type: 'pipeline', status: 'completed' }, ui: { nav: 'dashboard' } })
     } else if (nativeCall.name === 'get_due_followups') {
