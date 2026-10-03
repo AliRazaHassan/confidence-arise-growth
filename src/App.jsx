@@ -694,7 +694,7 @@ function FindView({ config, onSent, agentPayload }) {
     if (postalCode.trim() && !/^\d{5}(?:-\d{4})?$/.test(postalCode.trim())) return setError('Enter a valid 5-digit US ZIP code (optionally ZIP+4).')
     setLoading(true)
     try {
-      const params = new URLSearchParams({ state, city, postalCode: postalCode.trim() })
+      const params = new URLSearchParams({ state, city, postalCode: postalCode.trim(), category: category === 'all' ? '' : category })
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 58000)
       const res = await fetch(`/api/businesses?${params}`, {
