@@ -325,6 +325,15 @@ function buildNodeLeadQuery(place, category = '') {
   const amenity =
     'restaurant|cafe|bar|fast_food|pub|biergarten|ice_cream|food_court|pharmacy|clinic|dentist|dentists|doctor|doctors|veterinary|car_rental|car_wash|marketplace|post_office|bank'
   const targeted = targetedOsmClauses(place, category)
+  if (targeted) {
+    return `
+[out:json][timeout:12];
+(
+  ${targeted}
+);
+out body ${Math.min(MAX_RESULTS, 300)};
+`.trim()
+  }
   return `
 [out:json][timeout:20];
 (
@@ -484,12 +493,12 @@ export async function searchBusinesses({ state, city, postalCode, category = '' 
     postalCode: postalCode?.trim() || '',
   })
 
-  const places = gridPlaces(place)
+  const places = category ? gridPlaces(place).slice(0, 2) : gridPlaces(place)
   let elements = []
   const osmResults = await Promise.all(
     places.map(async (gridPlace) => {
       try {
-        const data = await fetchOverpass(buildNodeLeadQuery(gridPlace, category), 16000)
+        const data = await fetchOverpass(buildNodeLeadQuery(gridPlace, category), category ? 12000 : 16000)
         return data.elements || []
       } catch {
         return []
