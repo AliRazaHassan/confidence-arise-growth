@@ -102,6 +102,7 @@ export function recordSubmission(entry) {
       lastContactAt: full.at,
       channels: entry.channels || [],
       status: entry.status || 'sent',
+      campaignId: entry.campaignId || null,
     })
   }
   return full
