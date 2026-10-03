@@ -277,6 +277,37 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
         action: { type: 'recent_leads', status: 'completed', leadCount: items.length, leads: items },
         ui: items.length ? { nav: 'find', payload: { leads: items, placeLabel: 'Recent leads' } } : null,
       })
+    } else if (nativeCall.name === 'prepare_outreach') {
+      const source = conciergeRecentLeads.get(sessionKey) || listLeads(200)
+      const channel = ['email','whatsapp','both'].includes(args.channel) ? args.channel : 'email'
+      const limit = Math.min(Math.max(Number(args.limit || 5), 1), 20)
+      const candidates = source.filter((lead) => {
+        if (channel === 'email') return Boolean(lead.email)
+        if (channel === 'whatsapp') return Boolean(lead.phone)
+        return Boolean(lead.email || lead.phone)
+      }).slice(0, limit)
+      const cfg = siteConfig()
+      const drafts = candidates.map((business) => ({
+        business,
+        email: business.email ? {
+          to: business.email,
+          subject: defaultEmailSubject(business.name),
+          body: defaultEmailBody(business, cfg),
+        } : null,
+        whatsapp: business.phone ? {
+          to: business.phone,
+          body: defaultWhatsAppBody(business, cfg),
+        } : null,
+      }))
+      return res.json({
+        ...conciergeSnapshot(),
+        answer: drafts.length
+          ? `Prepared ${drafts.length} outreach preview${drafts.length === 1 ? '' : 's'}. I opened the leads so you can review each message before sending.`
+          : 'I could not prepare outreach because the current lead set has no matching contact details. Find fresh leads with email or phone first.',
+        aiPowered: true,
+        action: { type: 'outreach_preview', status: 'completed', count: drafts.length, drafts },
+        ui: drafts.length ? { nav: 'find', payload: { leads: candidates, placeLabel: 'Outreach queue', outreachDrafts: drafts } } : null,
+      })
     } else if (nativeCall.name === 'get_pipeline') {
       return res.json({ ...conciergeSnapshot(), answer: aiPlan.answer || 'I opened the current pipeline overview.', aiPowered: true, action: { type: 'pipeline', status: 'completed' }, ui: { nav: 'dashboard' } })
     } else if (nativeCall.name === 'get_due_followups') {
