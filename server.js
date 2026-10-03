@@ -343,23 +343,30 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
         : [[action.city, action.state]]
       const collected = []
       let result = null
-      for (const [marketCity, marketState] of markets) {
+      const marketResults = await Promise.all(markets.map(async ([marketCity, marketState]) => {
         try {
           const found = await Promise.race([
             searchBusinesses({ state: marketState, city: marketCity, postalCode: '', category: action.category }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Market search timeout')), 18000)),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Market search timeout')), 20000)),
           ])
-          if (!result) result = found
-          const matches = found.businesses.filter((b) => categoryTerms.some((term) => String(b.category || '').toLowerCase().includes(term) || String(b.name || '').toLowerCase().includes(term)))
-          for (const b of matches) {
-            if (action.requireEmail && !b.email) continue
-            if (action.requirePhone && !b.phone) continue
-            if (!collected.some((x) => x.id === b.id || (x.email && x.email === b.email) || (x.phone && x.phone === b.phone))) collected.push({ ...b, market: `${marketCity}, ${marketState}` })
-          }
-          if (collected.length >= action.limit) break
+          return { marketCity, marketState, found }
         } catch (err) {
           console.error('[concierge] market search failed', { marketCity, marketState, category: action.category, error: err.message })
+          return { marketCity, marketState, error: err.message }
         }
+      }))
+      for (const market of marketResults) {
+        if (!market.found) continue
+        const { marketCity, marketState, found } = market
+        if (!result) result = found
+        const matches = found.businesses.filter((b) => categoryTerms.some((term) => String(b.category || '').toLowerCase().includes(term) || String(b.name || '').toLowerCase().includes(term)))
+        for (const b of matches) {
+          if (action.requireEmail && !b.email) continue
+          if (action.requirePhone && !b.phone) continue
+          if (!collected.some((x) => x.id === b.id || (x.email && x.email === b.email) || (x.phone && x.phone === b.phone))) collected.push({ ...b, market: `${marketCity}, ${marketState}` })
+          if (collected.length >= action.limit) break
+        }
+        if (collected.length >= action.limit) break
       }
       if (!result) throw new Error('No searchable market returned results.')
       const items = collected.sort((a,b) => Number(b.opportunityScore || 0) - Number(a.opportunityScore || 0)).slice(0, action.limit)
