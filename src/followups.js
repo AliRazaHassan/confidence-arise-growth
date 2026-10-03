@@ -1,6 +1,6 @@
 const ACTIVE_STATUSES = new Set(['contacted', 'replied', 'qualified', 'proposal'])
 
-const CADENCE_DAYS = [3, 4, 5]
+const CADENCE_DAYS = [3, 4, 7]
 
 export function followUpStep(crm = {}, lead = {}) {
   const sent = Number(crm.followUpCount || 0)
