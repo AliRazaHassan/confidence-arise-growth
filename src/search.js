@@ -125,7 +125,7 @@ function categoryBucket(tags = {}) {
     return 'restaurant'
   }
   if (tags.office) return 'office'
-  if (tags.healthcare || /pharmacy|clinic|dentists|doctors/.test(tags.amenity || '')) {
+  if (tags.healthcare || /pharmacy|clinic|dentist|dentists|doctor|doctors/.test(tags.amenity || '')) {
     return 'healthcare'
   }
   if (tags.tourism) return 'tourism'
@@ -145,7 +145,7 @@ function isOutreachBusiness(tags = {}) {
       tags.healthcare ||
       (tags.tourism && /hotel|guest_house|hostel|motel/.test(tags.tourism)) ||
       (tags.amenity &&
-        /restaurant|cafe|bar|fast_food|pub|biergarten|ice_cream|food_court|pharmacy|clinic|dentists|doctors|veterinary|car_rental|car_wash|marketplace|post_office|bank/.test(
+        /restaurant|cafe|bar|fast_food|pub|biergarten|ice_cream|food_court|pharmacy|clinic|dentist|dentists|doctor|doctors|veterinary|car_rental|car_wash|marketplace|post_office|bank/.test(
           tags.amenity,
         )),
   )
@@ -282,11 +282,49 @@ async function geocodeUsa({ state, city, postalCode }) {
   throw new Error('Could not look up that place. Pick state + city again.')
 }
 
-/** Proven-stable node query (volume + contact). */
-function buildNodeLeadQuery(place) {
+function categorySearchTerms(category) {
+  const value = String(category || '').trim().toLowerCase()
+  if (!value || value === 'business') return []
+  const aliases = {
+    'real estate': ['real estate', 'realtor', 'realty', 'estate agent', 'property management'],
+    realtor: ['real estate', 'realtor', 'realty', 'estate agent'],
+    dentist: ['dentist', 'dental clinic', 'dental office'],
+    dentists: ['dentist', 'dental clinic', 'dental office'],
+    restaurant: ['restaurant', 'restaurants'],
+    cafe: ['cafe', 'coffee shop'],
+  }
+  return aliases[value] || [value]
+}
+
+function targetedOsmClauses(place, category) {
+  const { lat, lon, radius: r } = place
+  const value = String(category || '').trim().toLowerCase()
+  if (!value || value === 'business') return ''
+  const contactVariants = (selector) => [
+    `node(around:${r},${lat},${lon})[name]${selector}[phone];`,
+    `node(around:${r},${lat},${lon})[name]${selector}["contact:phone"];`,
+    `node(around:${r},${lat},${lon})[name]${selector}[email];`,
+    `node(around:${r},${lat},${lon})[name]${selector}["contact:email"];`,
+  ].join('\n  ')
+
+  if (/real\s*estate|realtor|realty|property/.test(value)) {
+    return contactVariants('[office~"estate_agent|property_management|real_estate"]')
+  }
+  if (/dentist|dental/.test(value)) {
+    return contactVariants('[amenity~"dentist|clinic"]')
+  }
+  if (/restaurant|cafe|coffee/.test(value)) {
+    return contactVariants('[amenity~"restaurant|cafe|fast_food"]')
+  }
+  return ''
+}
+
+/** Proven-stable node query (volume + contact) plus category-targeted discovery. */
+function buildNodeLeadQuery(place, category = '') {
   const { lat, lon, radius: r } = place
   const amenity =
-    'restaurant|cafe|bar|fast_food|pub|biergarten|ice_cream|food_court|pharmacy|clinic|dentists|doctors|veterinary|car_rental|car_wash|marketplace|post_office|bank'
+    'restaurant|cafe|bar|fast_food|pub|biergarten|ice_cream|food_court|pharmacy|clinic|dentist|dentists|doctor|doctors|veterinary|car_rental|car_wash|marketplace|post_office|bank'
+  const targeted = targetedOsmClauses(place, category)
   return `
 [out:json][timeout:20];
 (
@@ -309,6 +347,7 @@ function buildNodeLeadQuery(place) {
   node(around:${r},${lat},${lon})[name][amenity~"${amenity}"]["contact:email"];
   node(around:${r},${lat},${lon})[name][tourism~"hotel|guest_house|hostel|motel"][phone];
   node(around:${r},${lat},${lon})[name][tourism~"hotel|guest_house|hostel|motel"][email];
+  ${targeted}
 );
 out body ${MAX_RESULTS};
 `.trim()
@@ -431,7 +470,7 @@ function gridPlaces(place) {
   ]
 }
 
-export async function searchBusinesses({ state, city, postalCode }) {
+export async function searchBusinesses({ state, city, postalCode, category = '' }) {
   if (!String(state || '').trim() && !String(city || '').trim() && !String(postalCode || '').trim()) {
     throw new Error('Select a US state and city, or enter a ZIP.')
   }
@@ -450,7 +489,7 @@ export async function searchBusinesses({ state, city, postalCode }) {
   const osmResults = await Promise.all(
     places.map(async (gridPlace) => {
       try {
-        const data = await fetchOverpass(buildNodeLeadQuery(gridPlace), 16000)
+        const data = await fetchOverpass(buildNodeLeadQuery(gridPlace, category), 16000)
         return data.elements || []
       } catch {
         return []
@@ -465,6 +504,7 @@ export async function searchBusinesses({ state, city, postalCode }) {
       place,
       city: city?.trim() || place.city,
       state: state?.trim() || place.state,
+      searchTerms: categorySearchTerms(category),
     })
   } catch {
     webBusinesses = []
