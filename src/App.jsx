@@ -1096,7 +1096,7 @@ function Concierge() {
       {tasks.length ? <div className="concierge-tasks"><strong>Priority queue</strong>{tasks.slice(0,3).map((t,i) => <div className="concierge-task" key={t.leadId || i}><span>{t.priority}</span><div><b>{t.title}</b><small>{t.detail}</small></div></div>)}</div> : null}
       <div className="concierge-chat">{chat.map((m,i) => <div key={i} className={'concierge-msg ' + m.role}>{m.text}</div>)}{busy ? <div className="concierge-msg assistant">Working…</div> : null}</div>
       <form className="concierge-input" onSubmit={(e) => { e.preventDefault(); ask() }}><input value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Ask me to find leads, open a workspace, or review your pipeline…" /><button className="btn-primary tiny" disabled={busy}>Ask</button></form>
-      <div className="concierge-quick concierge-quick-bottom">{['Find 20 real estate leads', 'Find 20 dentists in Austin, TX', 'Show recent leads', 'Follow-ups due?', 'Open Settings'].map((q) => <button type="button" key={q} onClick={() => ask(q)} disabled={busy}>{q}</button>)}</div>
+      <div className="concierge-quick concierge-quick-bottom">{['Find 20 real estate leads', 'Find 20 dentists in Austin, TX', 'Prepare outreach for top 5 leads', 'Show recent leads', 'Follow-ups due?', 'Open Settings'].map((q) => <button type="button" key={q} onClick={() => ask(q)} disabled={busy}>{q}</button>)}</div>
     </aside> : null}
   </>
 }
