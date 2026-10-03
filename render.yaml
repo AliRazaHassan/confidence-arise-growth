@@ -25,3 +25,25 @@ services:
         sync: false
       - key: WHATSAPP_PHONE_NUMBER_ID
         sync: false
+      - key: WHATSAPP_GRAPH_VERSION
+        value: v21.0
+      - key: WHATSAPP_APP_SECRET
+        sync: false
+      - key: EMAIL_SETTINGS_SECRET
+        sync: false
+      - key: WHATSAPP_SETTINGS_SECRET
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_CONCIERGE_MODEL
+        value: gpt-5.6-luna
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: GOOGLE_CSE_ID
+        sync: false
+      - key: BING_SEARCH_API_KEY
+        sync: false
+      - key: EMAIL_REPLY_SYNC_ENABLED
+        value: "false"
+      - key: EMAIL_REPLY_SYNC_MINUTES
+        value: "10"
