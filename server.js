@@ -346,7 +346,7 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
       for (const [marketCity, marketState] of markets) {
         try {
           const found = await Promise.race([
-            searchBusinesses({ state: marketState, city: marketCity, postalCode: '' }),
+            searchBusinesses({ state: marketState, city: marketCity, postalCode: '', category: action.category }),
             new Promise((_, reject) => setTimeout(() => reject(new Error('Market search timeout')), 18000)),
           ])
           if (!result) result = found
@@ -357,7 +357,9 @@ app.post('/api/concierge/chat', requireAuth, async (req, res) => {
             if (!collected.some((x) => x.id === b.id || (x.email && x.email === b.email) || (x.phone && x.phone === b.phone))) collected.push({ ...b, market: `${marketCity}, ${marketState}` })
           }
           if (collected.length >= action.limit) break
-        } catch {}
+        } catch (err) {
+          console.error('[concierge] market search failed', { marketCity, marketState, category: action.category, error: err.message })
+        }
       }
       if (!result) throw new Error('No searchable market returned results.')
       const items = collected.sort((a,b) => Number(b.opportunityScore || 0) - Number(a.opportunityScore || 0)).slice(0, action.limit)
